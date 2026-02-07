@@ -7,20 +7,27 @@ namespace PexInterface.UnitTests
 {
     public class Program
     {
-        public void TestLoadPex(string PexPath)
+        public static PexReader Reader = new PexReader();
+        public static PapyrusAsmDecoder AsmDecoder = null;
+        public static void LoadPex(string PexPath)
         {
-            PexReader Reader = new PexReader();
             Reader.LoadPex(PexPath);
             string PexContentJson = JsonConvert.SerializeObject(Reader);
 
-            PapyrusAsmDecoder Decoder = new PapyrusAsmDecoder(Reader, PapyrusAsmDecoder.CodeGenStyle.CSharp);
-            string DecodeJson = JsonConvert.SerializeObject(Decoder);
-            var GetPsc = Decoder.Decompile();
+            AsmDecoder = new PapyrusAsmDecoder(Reader, PapyrusAsmDecoder.CodeGenStyle.CSharp);
+            string DecodeJson = JsonConvert.SerializeObject(AsmDecoder);
+            var GetPsc = AsmDecoder.Decompile();
 
             Console.Write(PexContentJson+"\n---------------------"+DecodeJson);
         }
         static void Main(string[] args)
         {
+            LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\rdo_mcmconfig.pex");
+
+            foreach (var Get in Reader.StringTable)
+            { 
+            
+            }
         }
     }
 }
