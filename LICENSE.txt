@@ -4,6 +4,13 @@ YD525 (https://github.com/YD525)
 Cutleast (https://github.com/cutleast)
 =================================================
 
+Exceptions:
+The following components are NOT covered by this license and are subject to their
+own respective licenses:
+
+- Newtonsoft.Json
+License https://github.com/JamesNK/Newtonsoft.Json/blob/master/LICENSE.md
+
 ------------------------------------------------------------
 1. License Overview
 ------------------------------------------------------------
