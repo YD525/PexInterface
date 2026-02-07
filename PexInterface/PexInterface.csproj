@@ -59,7 +59,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="PexDecompiler.cs" />
+    <Compile Include="PapyrusAsmDecoder.cs" />
     <Compile Include="PexHeuristicAnalysis.cs" />
     <Compile Include="PexReader.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

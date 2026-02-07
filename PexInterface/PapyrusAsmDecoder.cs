@@ -3,13 +3,13 @@ using static PexInterface.PexReader;
 using System.Collections.Generic;
 using System.Text;
 using System;
-using static PexDecompiler;
 using PexInterface;
+using static PapyrusAsmDecoder;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
 // See LICENSE file in the project root for full license information.
-public class PexDecompiler
+public class PapyrusAsmDecoder
 {
     public static string ObjToStr(object Item)
     {
@@ -43,7 +43,7 @@ public class PexDecompiler
     public PexReader Reader;
     string CodeSpace = "    ";
 
-    public PexDecompiler(PexReader CurrentReader, CodeGenStyle GenStyle = CodeGenStyle.Papyrus)
+    public PapyrusAsmDecoder(PexReader CurrentReader, CodeGenStyle GenStyle = CodeGenStyle.Papyrus)
     {
         this.Reader = CurrentReader;
         this.GenStyle = GenStyle;
