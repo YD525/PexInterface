@@ -121,7 +121,7 @@ public class PapyrusAsmDecoder
             else
             if (this.GenStyle == CodeGenStyle.CSharp)
             {
-                PscCode.AppendLine("public class  " + ScriptName + " : " + ParentClass + " \n{");
+                PscCode.AppendLine("public class " + ScriptName.Trim() + ":" + ParentClass.Trim() + " \n{");
             }
         }
     }

@@ -14,7 +14,7 @@ namespace PexInterface.UnitTests
             Reader.LoadPex(PexPath);
             string PexContentJson = JsonConvert.SerializeObject(Reader);
 
-            AsmDecoder = new PapyrusAsmDecoder(Reader, PapyrusAsmDecoder.CodeGenStyle.CSharp);
+            AsmDecoder = new PapyrusAsmDecoder(Reader, PapyrusAsmDecoder.CodeGenStyle.Papyrus);
             string DecodeJson = JsonConvert.SerializeObject(AsmDecoder);
             var GetPsc = AsmDecoder.Decompile();
 
