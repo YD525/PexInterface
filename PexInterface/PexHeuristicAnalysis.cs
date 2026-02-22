@@ -21,7 +21,7 @@ namespace PexInterface
             {
                 if (Strings[i].Translated.Length > 0)
                 {
-                    PexInterop.ModifyStringTable((ushort)i, Strings[i].Translated);
+                    PexInterop.ModifyStringTable((ushort)Strings[i].StringTableID, Strings[i].Translated);
                     ModifyCount++;
                 }
             }
@@ -35,6 +35,7 @@ namespace PexInterface
 
     public class PexStringItem
     {
+        public string UniqueKey = "";
         public int StringTableID = 0;
         public object Link = null;
         public int Score = 0;
