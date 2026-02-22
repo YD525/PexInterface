@@ -27,6 +27,9 @@ namespace PexInterface
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
         public static extern int C_ReadPex([MarshalAs(UnmanagedType.LPWStr)] string pexPath);
 
+        [DllImport("SSELexApi.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int C_ModifyStringTable(ushort index, IntPtr utf8Str);
+
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
         public static extern int C_SavePex([MarshalAs(UnmanagedType.LPWStr)] string pexPath);
 
@@ -195,6 +198,21 @@ namespace PexInterface
                 return C_ReadPex(path);
             }
             return -1;
+        }
+
+        public static int ModifyStringTable(ushort index, string str)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(str + "\0");
+            IntPtr ptr = Marshal.AllocHGlobal(bytes.Length);
+            try
+            {
+                Marshal.Copy(bytes, 0, ptr, bytes.Length);
+                return C_ModifyStringTable(index, ptr);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(ptr);
+            }
         }
 
         public static int SavePex(string path)
