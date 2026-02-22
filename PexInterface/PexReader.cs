@@ -27,7 +27,7 @@ namespace PexInterface
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
         public static extern int C_ReadPex([MarshalAs(UnmanagedType.LPWStr)] string pexPath);
 
-        [DllImport("SSELexApi.dll", CallingConvention = CallingConvention.Cdecl)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int C_ModifyStringTable(ushort index, IntPtr utf8Str);
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
