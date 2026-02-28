@@ -291,7 +291,7 @@ public class PapyrusAsmDecoder
         return Space;
     }
 
-    public string DeFunctionCode(CodeGenStyle Style,DecompileTracker Tracker, int Rows)
+    public string DeFunctionCode(CodeGenStyle Style,DecompileTracker Tracker, int Rows,bool CanSkipPscDeCode)
     {
         int SpaceCount = 2;
         var TempStr = "";
@@ -299,7 +299,10 @@ public class PapyrusAsmDecoder
         {
             if (Tracker.Tracks.ContainsKey(i))
             {
-                Tracker.Tracks[i].Decompile(Style,Tracker);
+                if (!CanSkipPscDeCode)
+                {
+                    Tracker.Tracks[i].Decompile(Style, Tracker);
+                }
 
                 if (Tracker.Tracks[i].Code.Length == 0)
                 {
@@ -322,7 +325,7 @@ public class PapyrusAsmDecoder
         }
         return TempStr;
     }
-    public void DeFunction(List<PexString> TempStrings, ref StringBuilder PscCode)
+    public void DeFunction(List<PexString> TempStrings, ref StringBuilder PscCode,bool CanSkipPscDeCode)
     {
         for (int i = 0; i < TempStrings.Count; i++)
         {
@@ -467,7 +470,7 @@ public class PapyrusAsmDecoder
                         LineIndex++;
                     }
 
-                    TempBlock += DeFunctionCode(GenStyle,Tracker,LineIndex);
+                    TempBlock += DeFunctionCode(GenStyle,Tracker,LineIndex,CanSkipPscDeCode);
 
                     PscCode.AppendLine(TempBlock);
 
@@ -486,7 +489,7 @@ public class PapyrusAsmDecoder
     }
 
     public List<PexString> CurrentStrings = new List<PexString>();
-    public string Decompile()
+    public string Decompile(bool CanSkipPscDeCode = false)
     {
         StringBuilder PscCode = new StringBuilder();
         List<PexString> TempStrings = new List<PexString>();
@@ -502,7 +505,7 @@ public class PapyrusAsmDecoder
         DeAutoGlobalVariables(TempStrings, ref PscCode);
         PscCode.Append("\n");
         //Function XXX() EndFunction
-        DeFunction(TempStrings, ref PscCode);
+        DeFunction(TempStrings, ref PscCode,CanSkipPscDeCode);
 
 
         if (this.GenStyle == CodeGenStyle.CSharp)

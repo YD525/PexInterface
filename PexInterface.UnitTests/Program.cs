@@ -18,7 +18,13 @@ namespace PexInterface.UnitTests
             string DecodeJson = JsonConvert.SerializeObject(AsmDecoder);
             var GetPsc = AsmDecoder.Decompile();
 
-            Console.Write(PexContentJson+"\n---------------------"+DecodeJson);
+            Console.Write(
+                PexContentJson +
+                "\n---------------------" 
+                + DecodeJson 
+                + "\n---------------------" 
+                + GetPsc
+                );
         }
         static void Main(string[] args)
         {
