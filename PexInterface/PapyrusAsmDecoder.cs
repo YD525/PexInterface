@@ -291,6 +291,37 @@ public class PapyrusAsmDecoder
         return Space;
     }
 
+    public string DeFunctionCode(CodeGenStyle Style,DecompileTracker Tracker, int Rows)
+    {
+        int SpaceCount = 2;
+        var TempStr = "";
+        for (int i = 0; i < Rows; i++)
+        {
+            if (Tracker.Tracks.ContainsKey(i))
+            {
+                Tracker.Tracks[i].Decompile(Style,Tracker);
+
+                if (Tracker.Tracks[i].Code.Length == 0)
+                {
+                    TempStr += GenSpace(SpaceCount) + Tracker.Tracks[i].Assembly + "\n";
+                }
+                else
+                {
+                    TempStr += GenSpace(SpaceCount) + Tracker.Tracks[i].Code + Tracker.Tracks[i].GetNote(Style) + "\n";
+                }
+            }
+            else
+            {
+                throw new Exception("Unrecognized code exists.");
+            }
+        }
+
+        if (TempStr.EndsWith("\n"))
+        {
+            TempStr = TempStr.Substring(0, TempStr.Length - "\n".Length);
+        }
+        return TempStr;
+    }
     public void DeFunction(List<PexString> TempStrings, ref StringBuilder PscCode)
     {
         for (int i = 0; i < TempStrings.Count; i++)
@@ -432,14 +463,11 @@ public class PapyrusAsmDecoder
                         }
 
                         CurrentLine = CurrentLine.Trim();
-                        TempBlock += GenSpace(2) + Tracker.CheckCode(LineIndex, GetOPName,CurrentLine) + "\n";
+                        Tracker.CheckCode(LineIndex, GetOPName,CurrentLine);
                         LineIndex++;
                     }
 
-                    if (TempBlock.EndsWith("\n"))
-                    {
-                        TempBlock = TempBlock.Substring(0, TempBlock.Length - "\n".Length);
-                    }
+                    TempBlock += DeFunctionCode(GenStyle,Tracker,LineIndex);
 
                     PscCode.AppendLine(TempBlock);
 
@@ -613,12 +641,28 @@ public class VariableSetter
 
 public class AssemblyLine
 {
-    public string AssemblyNote = "";
+    public string Assembly = "";
+    public string Code = "";
     public object TrackRef;
-    public AssemblyLine(string AssemblyNote, object Track)
+    public AssemblyLine(string Assembly, object Track)
     {
-        this.AssemblyNote = AssemblyNote;
+        this.Assembly = Assembly;
         this.TrackRef = Track;
+    }
+
+    public AssemblyLine(string Assembly)
+    {
+        this.Assembly = Assembly;
+        this.TrackRef = null;
+    }
+    public void Decompile(CodeGenStyle Style,DecompileTracker Tracker)
+    { 
+    
+    }
+
+    public string GetNote(CodeGenStyle Style)
+    {
+        return "//" + this.Assembly;
     }
 }
 
@@ -700,21 +744,16 @@ public class DecompileTracker
         }
         return VariableName;
     }
-    public string CheckCode(int LineIndex, string OPCode, string Line)
+    public void CheckCode(int LineIndex, string OPCode, string Line)
     {
-        if (Tracks.ContainsKey(LineIndex))
-        {
-            throw new Exception();
-        }
         List<string> GetParams = CreatParams(Line);
-        string Note = "//" + OPCode + " " + Line;
+        string DefLine = OPCode + " " + Line;
 
         if (OPCode == "return")
         {
             var SetReturn = new TReturn(LineIndex, GetParams);
             _Returns.Add(SetReturn);
-            Tracks.Add(LineIndex, new AssemblyLine(Note, SetReturn));
-            return Note;
+            Tracks.Add(LineIndex, new AssemblyLine(DefLine, SetReturn));
         }
         else
         if (OPCode == "callmethod" || OPCode == "callparent" || OPCode == "callstatic")
@@ -821,7 +860,7 @@ public class DecompileTracker
                         NTFunction.Params = Params;
 
                         _PexFunctions.Add(NTFunction);
-                        Tracks.Add(LineIndex,new AssemblyLine(Note,NTFunction));
+                        Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
                     }
                 }
                 else
@@ -833,7 +872,7 @@ public class DecompileTracker
                     NTFunction.Params = Params;
 
                     _PexFunctions.Add(NTFunction);
-                    Tracks.Add(LineIndex,new AssemblyLine(Note,NTFunction));
+                    Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
                 }
             }
             else
@@ -849,7 +888,7 @@ public class DecompileTracker
                         NTFunction.Params = Params;
 
                         _PexFunctions.Add(NTFunction);
-                        Tracks.Add(LineIndex,new AssemblyLine(Note,NTFunction));
+                        Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
                     }
                 }
                 else
@@ -861,11 +900,9 @@ public class DecompileTracker
                     NTFunction.Params = Params;
 
                     _PexFunctions.Add(NTFunction);
-                    Tracks.Add(LineIndex,new AssemblyLine(Note,NTFunction));
+                    Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
                 }
             }
-
-            return Note;
         }
         else
         if (OPCode == "assign")
@@ -878,9 +915,7 @@ public class DecompileTracker
                 NTVariable.VariableName = GetParams[0];
 
                 _PexVariables.Add(NTVariable);
-                Tracks.Add(LineIndex, new AssemblyLine(Note,NTVariable));
-
-                return Note;
+                Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTVariable));
             }
             else
             {
@@ -892,9 +927,7 @@ public class DecompileTracker
                     NVariableSetter.Child = Line.Split(' ')[1];
                     _VariableSetters.Add(NVariableSetter);
 
-                    Tracks.Add(LineIndex, new AssemblyLine(Note, NVariableSetter));
-
-                    return Note;
+                    Tracks.Add(LineIndex, new AssemblyLine(DefLine, NVariableSetter));
                 }
                 else
                 {
@@ -903,8 +936,7 @@ public class DecompileTracker
                     NTVariable.LineIndex = LineIndex;
 
                     _PexVariables.Add(NTVariable);
-                    Tracks.Add(LineIndex,new AssemblyLine(Note,NTVariable));
-                    return Note;
+                    Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTVariable));
                 }
             }
         }
@@ -927,7 +959,7 @@ public class DecompileTracker
                 }
             }
 
-            SetLink:
+        SetLink:
             if (FindLink)
             {
                 this._CastLinks[SetOffset].AddLinks(GetParams);
@@ -940,8 +972,6 @@ public class DecompileTracker
 
                 this._CastLinks.Add(NCastLink);
             }
-
-            return Note;
         }
         else
         if (OPCode == "propget" || OPCode == "propset")
@@ -958,6 +988,7 @@ public class DecompileTracker
             {
                 string GetPropName = GetParams[0];
                 GetPropName = GetPropName.Trim();
+
                 if (GetPropName.Contains(" "))
                 {
                     var GetPropNames = GetPropName.Split(' ');
@@ -969,14 +1000,6 @@ public class DecompileTracker
                         {
                             NTProp.Self = true;
                         }
-                        else
-                        {
-
-                        }
-                    }
-                    else
-                    {
-
                     }
 
                     NTProp.LinkVariable = GetParams[1];
@@ -1005,8 +1028,7 @@ public class DecompileTracker
             }
 
             _Props.Add(NTProp);
-            Tracks.Add(LineIndex, new AssemblyLine(Note, NTProp));
-            return Note;
+            Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTProp));
         }
         else
         if (OPCode == "strcat")
@@ -1062,10 +1084,8 @@ public class DecompileTracker
                     NTStrcat.IsLeft = false;
                 }
                 _StrMerges.Add(NTStrcat);
-                Tracks.Add(LineIndex,new AssemblyLine(Note,NTStrcat));
+                Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTStrcat));
             }
-
-            return Note;
         }
         else
         if (OPCode == "cmp_eq" || OPCode == "cmp_lt" || OPCode == "cmp_le" || OPCode == "cmp_gt" || OPCode == "cmp_ge")
@@ -1108,17 +1128,15 @@ public class DecompileTracker
                 NTOperator.LinkVariable = GetParams[0].Trim();
 
                 _Operators.Add(NTOperator);
-                Tracks.Add(LineIndex,new AssemblyLine(Note,NTOperator));
-
-                return Note;
+                Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTOperator));
             }
             else
             {
-                throw new Exception();
+                throw new Exception("cmp parse failed.");
             }
         }
         else
-        if (OPCode== "jmpt" || OPCode == "jmpf" || OPCode == "jmp")
+        if (OPCode == "jmpt" || OPCode == "jmpf" || OPCode == "jmp")
         {
             var SetJump = new TJump();
             SetJump.LineIndex = LineIndex;
@@ -1128,15 +1146,13 @@ public class DecompileTracker
             {
                 SetJump.Variable = GetParams[0].Trim();
             }
-            
-            _Jumps.Add(SetJump);
-            Tracks.Add(LineIndex,new AssemblyLine(Note,SetJump));
 
-            return Note;
+            _Jumps.Add(SetJump);
+            Tracks.Add(LineIndex, new AssemblyLine(DefLine, SetJump));
         }
         else
         {
-            return OPCode + " " + Line;
+            Tracks.Add(LineIndex, new AssemblyLine(DefLine));
         }
     }
 }
