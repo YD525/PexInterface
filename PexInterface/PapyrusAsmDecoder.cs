@@ -577,24 +577,34 @@ public class TOperator
 
 public class TReturn
 {
+    public int CodeLine = 0;
     public List<string> ReturnVariables = new List<string>();
-    public TReturn(List<string> Params)
+    public TReturn(int CodeLine,List<string> Params)
     {
+        this.CodeLine = CodeLine;
         this.ReturnVariables = Params;
     }
+}
+
+public class TJump
+{
+    public int CodeLine = 0;
+    public string Jump = "";
+    public string Variable = "";
 }
 public class DecompileTracker
 {
     public string FuncName = "";
 
-    public Dictionary<int, object> Trackes = new Dictionary<int, object>();
+    public Dictionary<int, object> Tracks = new Dictionary<int, object>();
 
     public List<TVariable> _PexVariables = new List<TVariable>();
     public List<TFunction> _PexFunctions = new List<TFunction>();
     public List<CastLink> _CastLinks = new List<CastLink>();
     public List<TProp> _Props = new List<TProp>();
-    public List<TStrcat> _Strcats = new List<TStrcat>();
+    public List<TStrcat> _StrMerges = new List<TStrcat>();
     public List<TOperator> _Operators = new List<TOperator>();
+    public List<TJump> _Jumps = new List<TJump>();
     public List<TReturn> _Returns = new List<TReturn>();
 
     public string QueryVariables(string TempName)
@@ -661,13 +671,17 @@ public class DecompileTracker
     }
     public string CheckCode(int CodeLine, List<int> IntValues, string OPCode, string Line, CodeGenStyle GenStyle)
     {
+        if (Tracks.ContainsKey(CodeLine))
+        {
+            throw new Exception();
+        }
         List<string> GetParams = CreatParams(Line);
 
         if (OPCode == "return")
         {
-            var SetReturn = new TReturn(GetParams);
+            var SetReturn = new TReturn(CodeLine,GetParams);
             _Returns.Add(SetReturn);
-            Trackes.Add(CodeLine,SetReturn);
+            Tracks.Add(CodeLine, SetReturn);
             return "//" + OPCode + " " + Line;
         }
         else
@@ -775,7 +789,7 @@ public class DecompileTracker
                         NTFunction.Params = Params;
 
                         _PexFunctions.Add(NTFunction);
-                        Trackes.Add(CodeLine, NTFunction);
+                        Tracks.Add(CodeLine, NTFunction);
                     }
                 }
                 else
@@ -787,7 +801,7 @@ public class DecompileTracker
                     NTFunction.Params = Params;
 
                     _PexFunctions.Add(NTFunction);
-                    Trackes.Add(CodeLine, NTFunction);
+                    Tracks.Add(CodeLine, NTFunction);
                 }
             }
             else
@@ -803,7 +817,7 @@ public class DecompileTracker
                         NTFunction.Params = Params;
 
                         _PexFunctions.Add(NTFunction);
-                        Trackes.Add(CodeLine, NTFunction);
+                        Tracks.Add(CodeLine, NTFunction);
                     }
                 }
                 else
@@ -815,7 +829,7 @@ public class DecompileTracker
                     NTFunction.Params = Params;
 
                     _PexFunctions.Add(NTFunction);
-                    Trackes.Add(CodeLine, NTFunction);
+                    Tracks.Add(CodeLine, NTFunction);
                 }
             }
 
@@ -831,7 +845,7 @@ public class DecompileTracker
                 NTVariable.VariableName = GetParams[0];
 
                 _PexVariables.Add(NTVariable);
-                Trackes.Add(CodeLine, NTVariable);
+                Tracks.Add(CodeLine, NTVariable);
                 return "//" + OPCode + " " + Line;
             }
             else
@@ -851,7 +865,7 @@ public class DecompileTracker
                     NTVariable.VariableName = Line;
 
                     _PexVariables.Add(NTVariable);
-                    Trackes.Add(CodeLine, NTVariable);
+                    Tracks.Add(CodeLine, NTVariable);
                     return "//" + OPCode + " " + Line;
                 }
             }
@@ -1006,8 +1020,8 @@ public class DecompileTracker
                     NTStrcat.MergeStr = NTStrcat.MergeStr.Substring(0, NTStrcat.MergeStr.Length - NTStrcat.LinkVariable.Length).Trim();
                     NTStrcat.IsLeft = false;
                 }
-                _Strcats.Add(NTStrcat);
-                Trackes.Add(CodeLine, NTStrcat);
+                _StrMerges.Add(NTStrcat);
+                Tracks.Add(CodeLine, NTStrcat);
             }
 
             return "//" + OPCode + " " + Line;
@@ -1053,7 +1067,7 @@ public class DecompileTracker
                 NTOperator.LinkVariable = GetParams[0].Trim();
 
                 _Operators.Add(NTOperator);
-                Trackes.Add(CodeLine, NTOperator);
+                Tracks.Add(CodeLine, NTOperator);
 
                 return "//" + OPCode + " " + Line;
             }
@@ -1063,6 +1077,23 @@ public class DecompileTracker
             }
 
             return OPCode + " " + Line;
+        }
+        else
+        if (OPCode== "jmpt" || OPCode == "jmpf" || OPCode == "jmp")
+        {
+            var SetJump = new TJump();
+            SetJump.CodeLine = CodeLine;
+            SetJump.Jump = OPCode;
+
+            if (GetParams.Count > 0)
+            {
+                SetJump.Variable = GetParams[0].Trim();
+            }
+            
+            _Jumps.Add(SetJump);
+            Tracks.Add(CodeLine, SetJump);
+
+            return "//" + OPCode + " " + Line;
         }
         else
         {
