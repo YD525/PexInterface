@@ -5,6 +5,8 @@ using System.Text;
 using System;
 using PexInterface;
 using static PapyrusAsmDecoder;
+using System.Net.Http.Headers;
+using System.Data.OleDb;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -592,11 +594,29 @@ public class TJump
     public string Jump = "";
     public string Variable = "";
 }
+
+public class VariableSetter
+{
+    public string Parent = "";
+    public string Child = "";
+}
+
+public class AssemblyLine
+{
+    public string AssemblyNote = "";
+    public object TrackRef;
+    public AssemblyLine(string AssemblyNote, object Track)
+    {
+        this.AssemblyNote = AssemblyNote;
+        this.TrackRef = Track;
+    }
+}
+
 public class DecompileTracker
 {
     public string FuncName = "";
 
-    public Dictionary<int, object> Tracks = new Dictionary<int, object>();
+    public Dictionary<int, AssemblyLine> Tracks = new Dictionary<int, AssemblyLine>();
 
     public List<TVariable> _PexVariables = new List<TVariable>();
     public List<TFunction> _PexFunctions = new List<TFunction>();
@@ -606,6 +626,7 @@ public class DecompileTracker
     public List<TOperator> _Operators = new List<TOperator>();
     public List<TJump> _Jumps = new List<TJump>();
     public List<TReturn> _Returns = new List<TReturn>();
+    public List<VariableSetter> _VariableSetters = new List<VariableSetter>();
 
     public string QueryVariables(string TempName)
     {
@@ -676,13 +697,14 @@ public class DecompileTracker
             throw new Exception();
         }
         List<string> GetParams = CreatParams(Line);
+        string Note = "//" + OPCode + " " + Line;
 
         if (OPCode == "return")
         {
             var SetReturn = new TReturn(CodeLine,GetParams);
             _Returns.Add(SetReturn);
-            Tracks.Add(CodeLine, SetReturn);
-            return "//" + OPCode + " " + Line;
+            Tracks.Add(CodeLine, new AssemblyLine(Note, SetReturn));
+            return Note;
         }
         else
         if (OPCode == "callmethod" || OPCode == "callparent" || OPCode == "callstatic")
@@ -789,7 +811,7 @@ public class DecompileTracker
                         NTFunction.Params = Params;
 
                         _PexFunctions.Add(NTFunction);
-                        Tracks.Add(CodeLine, NTFunction);
+                        Tracks.Add(CodeLine,new AssemblyLine(Note,NTFunction));
                     }
                 }
                 else
@@ -801,7 +823,7 @@ public class DecompileTracker
                     NTFunction.Params = Params;
 
                     _PexFunctions.Add(NTFunction);
-                    Tracks.Add(CodeLine, NTFunction);
+                    Tracks.Add(CodeLine,new AssemblyLine(Note,NTFunction));
                 }
             }
             else
@@ -817,7 +839,7 @@ public class DecompileTracker
                         NTFunction.Params = Params;
 
                         _PexFunctions.Add(NTFunction);
-                        Tracks.Add(CodeLine, NTFunction);
+                        Tracks.Add(CodeLine,new AssemblyLine(Note,NTFunction));
                     }
                 }
                 else
@@ -829,11 +851,11 @@ public class DecompileTracker
                     NTFunction.Params = Params;
 
                     _PexFunctions.Add(NTFunction);
-                    Tracks.Add(CodeLine, NTFunction);
+                    Tracks.Add(CodeLine,new AssemblyLine(Note,NTFunction));
                 }
             }
 
-            return "//" + OPCode + " " + Line;
+            return Note;
         }
         else
         if (OPCode == "assign")
@@ -845,8 +867,9 @@ public class DecompileTracker
                 NTVariable.VariableName = GetParams[0];
 
                 _PexVariables.Add(NTVariable);
-                Tracks.Add(CodeLine, NTVariable);
-                return "//" + OPCode + " " + Line;
+                Tracks.Add(CodeLine, new AssemblyLine(Note,NTVariable));
+
+                return Note;
             }
             else
             {
@@ -857,7 +880,14 @@ public class DecompileTracker
                     {
                         ReturnLine += ";";
                     }
-                    return "//" + ReturnLine;
+                    VariableSetter NVariableSetter = new VariableSetter();
+                    NVariableSetter.Parent = Line.Split(' ')[0];
+                    NVariableSetter.Child = Line.Split(' ')[1];
+                    _VariableSetters.Add(NVariableSetter);
+
+                    Tracks.Add(CodeLine, new AssemblyLine(Note, NVariableSetter));
+
+                    return Note;
                 }
                 else
                 {
@@ -865,8 +895,8 @@ public class DecompileTracker
                     NTVariable.VariableName = Line;
 
                     _PexVariables.Add(NTVariable);
-                    Tracks.Add(CodeLine, NTVariable);
-                    return "//" + OPCode + " " + Line;
+                    Tracks.Add(CodeLine,new AssemblyLine(Note,NTVariable));
+                    return Note;
                 }
             }
         }
@@ -903,7 +933,7 @@ public class DecompileTracker
                 this._CastLinks.Add(NCastLink);
             }
 
-            return "//" + OPCode + " " + Line;
+            return Note;
         }
         else
         if (OPCode == "propget" || OPCode == "propset")
@@ -965,7 +995,7 @@ public class DecompileTracker
                 NTProp.LinkVariable = GetParams[GetParams.Count - 1].Trim();
                 NTProp.Fronts = GetFronts;
             }
-            return "//" + OPCode + " " + Line;
+            return Note;
         }
         else
         if (OPCode == "strcat")
@@ -1021,10 +1051,10 @@ public class DecompileTracker
                     NTStrcat.IsLeft = false;
                 }
                 _StrMerges.Add(NTStrcat);
-                Tracks.Add(CodeLine, NTStrcat);
+                Tracks.Add(CodeLine,new AssemblyLine(Note,NTStrcat));
             }
 
-            return "//" + OPCode + " " + Line;
+            return Note;
         }
         else
         if (OPCode == "cmp_eq" || OPCode == "cmp_lt" || OPCode == "cmp_le" || OPCode == "cmp_gt" || OPCode == "cmp_ge")
@@ -1067,16 +1097,14 @@ public class DecompileTracker
                 NTOperator.LinkVariable = GetParams[0].Trim();
 
                 _Operators.Add(NTOperator);
-                Tracks.Add(CodeLine, NTOperator);
+                Tracks.Add(CodeLine,new AssemblyLine(Note,NTOperator));
 
-                return "//" + OPCode + " " + Line;
+                return Note;
             }
             else
             {
-
+                throw new Exception();
             }
-
-            return OPCode + " " + Line;
         }
         else
         if (OPCode== "jmpt" || OPCode == "jmpf" || OPCode == "jmp")
@@ -1091,9 +1119,9 @@ public class DecompileTracker
             }
             
             _Jumps.Add(SetJump);
-            Tracks.Add(CodeLine, SetJump);
+            Tracks.Add(CodeLine,new AssemblyLine(Note,SetJump));
 
-            return "//" + OPCode + " " + Line;
+            return Note;
         }
         else
         {
