@@ -14,6 +14,11 @@ namespace PexInterface
 
         public List<PexStringItem> Strings = new List<PexStringItem>();
 
+        public void Analyze(DecompileTracker Tracker)
+        {
+            Strings.Clear();
+        }
+
         public void SaveAll(string Output)
         {
             int ModifyCount = 0;
@@ -29,6 +34,8 @@ namespace PexInterface
             {
                 PexInterop.SavePex(Output);
             }
+
+            Strings.Clear();
         }
     }
 

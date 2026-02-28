@@ -107,7 +107,7 @@ public class PapyrusAsmDecoder
         return null;
     }
 
-    public void AnalyzeClass(List<PexString> TempStrings, ref StringBuilder PscCode)
+    public void DeClass(List<PexString> TempStrings, ref StringBuilder PscCode)
     {
         if (Reader.Objects.Count > 0)
         {
@@ -121,12 +121,12 @@ public class PapyrusAsmDecoder
             else
             if (this.GenStyle == CodeGenStyle.CSharp)
             {
-                PscCode.AppendLine("public class " + ScriptName.Trim() + ":" + ParentClass.Trim() + " \n{");
+                PscCode.AppendLine("public class " + ScriptName.Trim() + " : " + ParentClass.Trim() + " \n{");
             }
         }
     }
 
-    public void AnalyzeGlobalVariables(List<PexString> TempStrings, ref StringBuilder PscCode)
+    public void DeGlobalVariables(List<PexString> TempStrings, ref StringBuilder PscCode)
     {
         if (GenStyle == CodeGenStyle.Papyrus)
         {
@@ -201,7 +201,7 @@ public class PapyrusAsmDecoder
         }
     }
 
-    public void AnalyzeAutoGlobalVariables(List<PexString> TempStrings, ref StringBuilder PscCode)
+    public void DeAutoGlobalVariables(List<PexString> TempStrings, ref StringBuilder PscCode)
     {
         if (GenStyle == CodeGenStyle.Papyrus)
         {
@@ -289,16 +289,11 @@ public class PapyrusAsmDecoder
         return Space;
     }
 
-    public void AnalyzeFunction(List<PexString> TempStrings, ref StringBuilder PscCode)
+    public void DeFunction(List<PexString> TempStrings, ref StringBuilder PscCode)
     {
         for (int i = 0; i < TempStrings.Count; i++)
         {
             var Item = TempStrings[i];
-
-            if (Item.Value == "RDO_SetActorAggression")
-            {
-
-            }
 
             ObjType CheckType = ObjType.Null;
 
@@ -327,6 +322,8 @@ public class PapyrusAsmDecoder
                         }
                     }
 
+                    ReturnType = ReturnType.Trim();
+
                     for (int ir = 0; ir < GetFunc1st.NumParams; ir++)
                     {
                         if (GetFunc1st.Parameters.Count > ir)
@@ -348,12 +345,17 @@ public class PapyrusAsmDecoder
 
                     if (GenStyle == CodeGenStyle.Papyrus)
                     {
-                        GenLine = string.Format("{0}Function {1}({2})", ReturnType, Item.Value, GenParams);
+                        GenLine = string.Format("{0} Function {1}({2})", ReturnType, Item.Value, GenParams);
                     }
                     else
                     if (GenStyle == CodeGenStyle.CSharp)
                     {
-                        GenLine = string.Format(CodeSpace + "public {0}{1}({2})\n", ReturnType, Item.Value, GenParams) + CodeSpace + "{";
+                        var TempType = ReturnType;
+                        if (TempType.Length == 0)
+                        {
+                            TempType = "void";
+                        }
+                        GenLine = string.Format(CodeSpace + "public {0} {1}({2})\n", TempType, Item.Value, GenParams) + CodeSpace + "{";
                     }
 
                     PscCode.AppendLine(GenLine);
@@ -365,11 +367,6 @@ public class PapyrusAsmDecoder
                     foreach (var GetInstruction in GetFunc1st.Instructions)
                     {
                         string GetOPName = GetInstruction.GetOpcodeName();
-
-                        if (GetOPName == "return")
-                        {
-
-                        }
 
                         List<int> IntValues = new List<int>();
 
@@ -468,14 +465,14 @@ public class PapyrusAsmDecoder
 
         CurrentStrings = TempStrings;
 
-        AnalyzeClass(TempStrings, ref PscCode);
+        DeClass(TempStrings, ref PscCode);
 
-        AnalyzeGlobalVariables(TempStrings, ref PscCode);
+        DeGlobalVariables(TempStrings, ref PscCode);
         PscCode.Append("\n");
-        AnalyzeAutoGlobalVariables(TempStrings, ref PscCode);
+        DeAutoGlobalVariables(TempStrings, ref PscCode);
         PscCode.Append("\n");
         //Function XXX() EndFunction
-        AnalyzeFunction(TempStrings, ref PscCode);
+        DeFunction(TempStrings, ref PscCode);
 
 
         if (this.GenStyle == CodeGenStyle.CSharp)
@@ -577,26 +574,39 @@ public class TOperator
     public string LinkVariable = "";
     public int CodeLine = 0;
 }
+
+public class TReturn
+{
+    public List<string> ReturnVariables = new List<string>();
+    public TReturn(List<string> Params)
+    {
+        this.ReturnVariables = Params;
+    }
+}
 public class DecompileTracker
 {
     public string FuncName = "";
-    public List<TVariable> PexVariables = new List<TVariable>();
-    public List<TFunction> PexFunctions = new List<TFunction>();
-    public List<CastLink> CastLinks = new List<CastLink>();
-    public List<TProp> Props = new List<TProp>();
-    public List<TStrcat> Strcats = new List<TStrcat>();
-    public List<TOperator> Operators = new List<TOperator>();
+
+    public Dictionary<int, object> Trackes = new Dictionary<int, object>();
+
+    public List<TVariable> _PexVariables = new List<TVariable>();
+    public List<TFunction> _PexFunctions = new List<TFunction>();
+    public List<CastLink> _CastLinks = new List<CastLink>();
+    public List<TProp> _Props = new List<TProp>();
+    public List<TStrcat> _Strcats = new List<TStrcat>();
+    public List<TOperator> _Operators = new List<TOperator>();
+    public List<TReturn> _Returns = new List<TReturn>();
 
     public string QueryVariables(string TempName)
     {
         TempName = TempName.Trim();
-        foreach (var Get in this.CastLinks)
+        foreach (var Get in this._CastLinks)
         {
             if (Get.Find(TempName))
             {
                 foreach (var GetLinkValue in Get.Links)
                 {
-                    foreach (var GetVariable in PexVariables)
+                    foreach (var GetVariable in _PexVariables)
                     {
                         if (GetVariable.Tag.Equals(GetLinkValue))
                         {
@@ -608,7 +618,7 @@ public class DecompileTracker
             }
         }
 
-        foreach (var GetVariable in PexVariables)
+        foreach (var GetVariable in _PexVariables)
         {
             if (GetVariable.Tag.Equals(TempName))
             {
@@ -653,6 +663,14 @@ public class DecompileTracker
     {
         List<string> GetParams = CreatParams(Line);
 
+        if (OPCode == "return")
+        {
+            var SetReturn = new TReturn(GetParams);
+            _Returns.Add(SetReturn);
+            Trackes.Add(CodeLine,SetReturn);
+            return "//" + OPCode + " " + Line;
+        }
+        else
         if (OPCode == "callmethod" || OPCode == "callparent" || OPCode == "callstatic")
         {
             TFunction NTFunction = new TFunction();
@@ -756,7 +774,8 @@ public class DecompileTracker
                         NTFunction.Fronts = Fronts;
                         NTFunction.Params = Params;
 
-                        PexFunctions.Add(NTFunction);
+                        _PexFunctions.Add(NTFunction);
+                        Trackes.Add(CodeLine, NTFunction);
                     }
                 }
                 else
@@ -767,7 +786,8 @@ public class DecompileTracker
                     NTFunction.Fronts = Fronts;
                     NTFunction.Params = Params;
 
-                    PexFunctions.Add(NTFunction);
+                    _PexFunctions.Add(NTFunction);
+                    Trackes.Add(CodeLine, NTFunction);
                 }
             }
             else
@@ -782,7 +802,8 @@ public class DecompileTracker
                         NTFunction.Fronts = Fronts;
                         NTFunction.Params = Params;
 
-                        PexFunctions.Add(NTFunction);
+                        _PexFunctions.Add(NTFunction);
+                        Trackes.Add(CodeLine, NTFunction);
                     }
                 }
                 else
@@ -793,7 +814,8 @@ public class DecompileTracker
                     NTFunction.Fronts = Fronts;
                     NTFunction.Params = Params;
 
-                    PexFunctions.Add(NTFunction);
+                    _PexFunctions.Add(NTFunction);
+                    Trackes.Add(CodeLine, NTFunction);
                 }
             }
 
@@ -808,7 +830,8 @@ public class DecompileTracker
                 NTVariable.Tag = GetParams[1];
                 NTVariable.VariableName = GetParams[0];
 
-                PexVariables.Add(NTVariable);
+                _PexVariables.Add(NTVariable);
+                Trackes.Add(CodeLine, NTVariable);
                 return "//" + OPCode + " " + Line;
             }
             else
@@ -827,8 +850,8 @@ public class DecompileTracker
                     TVariable NTVariable = new TVariable();
                     NTVariable.VariableName = Line;
 
-                    PexVariables.Add(NTVariable);
-
+                    _PexVariables.Add(NTVariable);
+                    Trackes.Add(CodeLine, NTVariable);
                     return "//" + OPCode + " " + Line;
                 }
             }
@@ -839,11 +862,11 @@ public class DecompileTracker
             bool FindLink = false;
             int SetOffset = -1;
 
-            for (int i = 0; i < this.CastLinks.Count; i++)
+            for (int i = 0; i < this._CastLinks.Count; i++)
             {
                 foreach (var CheckLink in GetParams)
                 {
-                    if (this.CastLinks[i].Find(CheckLink))
+                    if (this._CastLinks[i].Find(CheckLink))
                     {
                         SetOffset = i;
                         FindLink = true;
@@ -855,7 +878,7 @@ public class DecompileTracker
         SetLink:
             if (FindLink)
             {
-                this.CastLinks[SetOffset].AddLinks(GetParams);
+                this._CastLinks[SetOffset].AddLinks(GetParams);
             }
             else
             {
@@ -863,7 +886,7 @@ public class DecompileTracker
                 NCastLink.CodeLine = CodeLine;
                 NCastLink.AddLinks(GetParams);
 
-                this.CastLinks.Add(NCastLink);
+                this._CastLinks.Add(NCastLink);
             }
 
             return "//" + OPCode + " " + Line;
@@ -983,7 +1006,8 @@ public class DecompileTracker
                     NTStrcat.MergeStr = NTStrcat.MergeStr.Substring(0, NTStrcat.MergeStr.Length - NTStrcat.LinkVariable.Length).Trim();
                     NTStrcat.IsLeft = false;
                 }
-                Strcats.Add(NTStrcat);
+                _Strcats.Add(NTStrcat);
+                Trackes.Add(CodeLine, NTStrcat);
             }
 
             return "//" + OPCode + " " + Line;
@@ -1027,6 +1051,11 @@ public class DecompileTracker
                 NTOperator.CodeLine = CodeLine;
                 NTOperator.Operator = Operator;
                 NTOperator.LinkVariable = GetParams[0].Trim();
+
+                _Operators.Add(NTOperator);
+                Trackes.Add(CodeLine, NTOperator);
+
+                return "//" + OPCode + " " + Line;
             }
             else
             {
