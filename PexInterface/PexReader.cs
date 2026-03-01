@@ -714,7 +714,6 @@ namespace PexInterface
             public List<PexProperty> Properties { get; set; }
             public List<PexState> States { get; set; }
 
-            // 改为方法
             public string GetName(PexReader reader)
             {
                 if (reader != null)

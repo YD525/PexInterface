@@ -1,18 +1,20 @@
-﻿
-using static PexInterface.PexReader;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
 using System;
 using PexInterface;
-using static PapyrusAsmDecoder;
-using System.Net.Http.Headers;
-using System.Data.OleDb;
-using System.IO;
 using System.Linq;
+using static PexInterface.PexReader;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
 // See LICENSE file in the project root for full license information.
+
+#region Extend
+public enum CodeGenStyle
+{
+    Null = 0, Papyrus = 1, CSharp = 2, Python = 3
+}
+
+#endregion
 public class PapyrusAsmDecoder
 {
     public static string ObjToStr(object Item)
@@ -33,14 +35,6 @@ public class PapyrusAsmDecoder
         }
         return Number;
     }
-
-    #region Extend
-    public enum CodeGenStyle
-    {
-        Null = 0, Papyrus = 1, CSharp = 2, Python = 3
-    }
-
-    #endregion
 
     public static string Version = "1.0.2 Alpha";
     public PexReader Reader;
