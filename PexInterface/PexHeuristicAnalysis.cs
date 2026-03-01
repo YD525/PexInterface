@@ -33,7 +33,7 @@ namespace PexInterface
             Strings.Clear();
             CurrentCls = SetClass;
         }
-        public string GetPsc(CodeGenStyle Style)
+        public string GetPsc(CodeGenStyle Style = CodeGenStyle.CSharp)
         {
             StringBuilder Content = new StringBuilder();
 
@@ -89,6 +89,8 @@ namespace PexInterface
                     }
                    
                 }
+
+                Content.AppendLine(string.Empty);
             }
 
             if (this.CurrentCls.AutoGlobalVariables.Count > 0)
@@ -122,6 +124,8 @@ namespace PexInterface
                         Content.AppendLine(string.Format(GenSpace(1)  + GetFunc.Type + " " + GetFunc.Name + ";" + " //" + NodeStr));
                     }
                 }
+
+                Content.AppendLine(string.Empty);
             }
 
             if (this.CurrentCls.Functions.Count > 0)
@@ -166,23 +170,23 @@ namespace PexInterface
 
                     int SpaceCount = 2;
 
-                    for (int i = 0; i < GetFunc.TracksRef.Keys.Count; i++)
+                    foreach(var GetTrack in GetFunc.TracksRef.Values)
                     {
                         string SetLine = "";
 
-                        if (GetFunc.TracksRef[i].Code.Length > 0)
+                        if (GetTrack.Code.Length > 0)
                         {
-                            SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount + GetFunc.TracksRef[i].SpaceCount) + GetFunc.TracksRef[i].Code + GetFunc.TracksRef[i].GetNote(Style) + "\n";
+                            SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount + GetTrack.SpaceCount) + GetTrack.Code + GetTrack.GetNote(Style) + "\n";
                         }
                         else
                         {
-                            if (GetFunc.TracksRef[i].TrackRef == null)
+                            if (GetTrack.TrackRef == null)
                             {
-                                SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount + GetFunc.TracksRef[i].SpaceCount) + GetFunc.TracksRef[i].Assembly + "\n";
+                                SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount + GetTrack.SpaceCount) + GetTrack.Assembly + "\n";
                             }
                             else
                             {
-                                SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount) + GetFunc.TracksRef[i].GetNote(Style) + "\n";
+                                SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount) + GetTrack.GetNote(Style) + "\n";
                             }
                         }
 

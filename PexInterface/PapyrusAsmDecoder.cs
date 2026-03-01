@@ -208,20 +208,13 @@ public class PapyrusAsmDecoder
 
         return GlobalVariables;
     }
-    public void DeFunctionCode(DecompileTracker TrackerRef, int Rows,bool CanSkipPscDeCode)
+    public void DeFunctionCode(DecompileTracker TrackerRef,bool CanSkipPscDeCode)
     {
-        for (int i = 0; i < Rows; i++)
+        foreach (var GetTrack in TrackerRef.Tracks)
         {
-            if (TrackerRef.Tracks.ContainsKey(i))
+            if (!CanSkipPscDeCode)
             {
-                if (!CanSkipPscDeCode)
-                {
-                    TrackerRef.Tracks[i].Decompile(TrackerRef);
-                }
-            }
-            else
-            {
-                throw new Exception("Unrecognized code exists.");
+                GetTrack.Value.Decompile(TrackerRef);
             }
         }
     }
@@ -356,7 +349,7 @@ public class PapyrusAsmDecoder
                         LineIndex++;
                     }
 
-                    DeFunctionCode(Tracker,LineIndex,CanSkipPscDeCode);
+                    DeFunctionCode(Tracker,CanSkipPscDeCode);
 
                     NFunctionBlock.TracksRef = Tracker.Tracks;
 
@@ -366,7 +359,7 @@ public class PapyrusAsmDecoder
         }
         return FunctionBlocks;
     }
-    public string Decompile(out PexHeuristicAnalysis Analyst,CodeGenStyle Style = CodeGenStyle.CSharp, bool CanSkipPscDeCode = false)
+    public void Decompile(out PexHeuristicAnalysis Analyst, bool CanSkipPscDeCode = false)
     {
         List<PexString> TempStrings = new List<PexString>();
 
@@ -381,8 +374,6 @@ public class PapyrusAsmDecoder
         GenPsc.Functions = DeFunction(TempStrings,CanSkipPscDeCode);
 
         Analyst = new PexHeuristicAnalysis(GenPsc);
-
-        return Analyst.GetPsc(Style);
     }
 }
 
