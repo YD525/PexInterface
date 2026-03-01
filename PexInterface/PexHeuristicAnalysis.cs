@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data.OleDb;
 using System.Text;
 
 namespace PexInterface
@@ -13,20 +12,7 @@ namespace PexInterface
         public static string Version = "1.0.0";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
-        //public static List<string> DangerPapyrusFuncs = new List<string>
-        //{
-        //    "DamageActorValue",//Game Api https://ck.uesp.net/wiki/DamageActorValue
-        //    "AttrDrain",//Game Api ?? maybe SkSE
-        //    "RandomExpressionByTag",//SexLab Api
-        //    "SendDeviceEvent",//DD Api
-        //    "SendModEvent",//Game Api https://ck.uesp.net/wiki/SendModEvent
-        //    "UnSetFormValue",//storageutil Api
-        //    "AnimSwitchKeyword",//Game Api ?? maybe SkSE 
-        //    "StartThirdPersonAnimation",//Game Api ?? maybe SkSE 
-        //    "SendAnimationEvent",//Game Api https://ck.uesp.net/wiki/SendAnimationEvent_-_Debug
-        //    "SetInstanceVolume",//Game Sound Api https://ck.uesp.net/wiki/SetInstanceVolume_-_Sound
-        //    "Create",//Game ModEvent Api https://ck.uesp.net/wiki/ModEvent_Script
-        //};
+      
 
         //public static List<string> UserDefinedSafeFuncs = new List<string>() {
         //"Notify", "notify",
@@ -47,19 +33,6 @@ namespace PexInterface
         //"ConsoleLog", "consoleLog",
         //};
 
-        //public static List<FuncCheck> MethodSafeParams = new List<FuncCheck>()
-        //{
-        //   new FuncCheck("NotifyPlayer",0),//DD Api
-        //   new FuncCheck("NotifyNPC",0),//DD Api
-        //   new FuncCheck("AddSliderOption",0),//SkyUI Api
-        //   new FuncCheck("AddSliderOptionST",1),//SkyUI Api
-        //   new FuncCheck("AddTextOption",0),//SkyUI Api
-        //   new FuncCheck("AddTextOptionST",1),//SkyUI Api
-        //   new FuncCheck("AddToggleOption",0),//SkyUI Api
-        //   new FuncCheck("AddToggleOptionST",1),//SkyUI Api
-        //   new FuncCheck("SetGameSettingString",1),//?? Api
-        //   new FuncCheck("ShowMessage",0)//DDI Api
-        //};
 
         public FuncRule FuncNameCheck = null;
 
@@ -85,21 +58,9 @@ namespace PexInterface
 
         public void Init()
         {
-            //public static List<FuncCheck> MethodSafeParams = new List<FuncCheck>()
-            //{
-            //   new FuncCheck("NotifyPlayer",0),//DD Api
-            //   new FuncCheck("NotifyNPC",0),//DD Api
-            //   new FuncCheck("AddSliderOption",0),//SkyUI Api
-            //   new FuncCheck("AddSliderOptionST",1),//SkyUI Api
-            //   new FuncCheck("AddTextOption",0),//SkyUI Api
-            //   new FuncCheck("AddTextOptionST",1),//SkyUI Api
-            //   new FuncCheck("AddToggleOption",0),//SkyUI Api
-            //   new FuncCheck("AddToggleOptionST",1),//SkyUI Api
-            //   new FuncCheck("SetGameSettingString",1),//?? Api
-            //   new FuncCheck("ShowMessage",0)//DDI Api
-            //};
-
             FuncNameCheck = new FuncRule();
+
+            //Safe
             FuncNameCheck.Add(new FunctionCheck("NotifyPlayer",0,true,ApiType.FrameworkApi,-1, "DD Api"));
             FuncNameCheck.Add(new FunctionCheck("NotifyNPC",0,true,ApiType.FrameworkApi, -1, "DD Api"));
 
@@ -115,6 +76,22 @@ namespace PexInterface
 
             FuncNameCheck.Add(new FunctionCheck("SetGameSettingString", 1, true, ApiType.UnknownAPI, -1, ""));
             FuncNameCheck.Add(new FunctionCheck("ShowMessage", 0, true, ApiType.FrameworkApi, 1, ""));
+    
+            //Danger
+            FuncNameCheck.Add(new FunctionCheck("DamageActorValue", 0, false, ApiType.NativeApi, -1, "Game Api","",true));
+            FuncNameCheck.Add(new FunctionCheck("SendModEvent", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("AnimSwitchKeyword", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("StartThirdPersonAnimation", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("SendAnimationEvent", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("SetInstanceVolume", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("Create", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
+
+            FuncNameCheck.Add(new FunctionCheck("UnSetFormValue", 0, false, ApiType.NativeApi, -1, "StorageUtil Api", "", true));
+        
+
+            FuncNameCheck.Add(new FunctionCheck("AttrDrain", 0, false, ApiType.FrameworkApi, -1, "SkSE Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("RandomExpressionByTag", 0, false, ApiType.FrameworkApi, -1, "SexLab Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("SendDeviceEvent", 0, false, ApiType.FrameworkApi, -1, "DD Api", "", true));
         }
         public string GetPsc(CodeGenStyle Style = CodeGenStyle.CSharp)
         {
@@ -338,7 +315,7 @@ namespace PexInterface
             public static int Null = 0;
             public static int Safe = 30;
             public static int Normal = 10;
-            public static int PotentialRisk = 1;
+            public static int PotentialRisk = 0;
             public static int HighRisk = -1;
         }
 
