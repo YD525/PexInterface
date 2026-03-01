@@ -3,6 +3,7 @@ using System;
 using PexInterface;
 using System.Linq;
 using static PexInterface.PexReader;
+using System.Reflection.Emit;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -498,10 +499,8 @@ public class TOperator
     public int LineIndex = 0;
 
     public string Operator = "";
-    public string ValueA = "";
-    public string ValueB = "";
 
-    public string LinkVariable = "";
+    public List<string> Variables = new List<string>();
 }
 
 public class TReturn
@@ -524,6 +523,17 @@ public class TJump
     public string Variable = "";
 }
 
+public class TArrayOP
+{
+    public string ArrayOP = "";
+    public List<string> Variables = new List<string>();
+}
+
+public class TValIncrease
+{
+    public string Variable = "";
+    public string Increase = "";
+}
 public class VariableSetter
 {
     public int LineIndex = 0;
@@ -570,7 +580,9 @@ public class DecompileTracker
     public List<TStrcat> _StrMerges = new List<TStrcat>();
     public List<TOperator> _Operators = new List<TOperator>();
     public List<TJump> _Jumps = new List<TJump>();
+    public List<TValIncrease> _TIncreases =new List<TValIncrease>();
     public List<TReturn> _Returns = new List<TReturn>();
+    public List<TArrayOP> _Arrays = new List<TArrayOP>();
     public List<VariableSetter> _VariableSetters = new List<VariableSetter>();
 
     public string QueryVariables(string TempName)
@@ -979,44 +991,14 @@ public class DecompileTracker
             }
         }
         else
-        if (OPCode == "cmp_eq" || OPCode == "cmp_lt" || OPCode == "cmp_le" || OPCode == "cmp_gt" || OPCode == "cmp_ge")
+        if (OPCode == "cmp_eq" || OPCode == "cmp_lt" || OPCode == "cmp_le" || OPCode == "cmp_gt" || OPCode == "cmp_ge" || OPCode == "not" || OPCode == "isub")
         {
             if (GetParams.Count > 0)
             {
-                string Operator = "";
-                switch (OPCode)
-                {
-                    case "cmp_eq":
-                        {
-                            Operator = "==";
-                        }
-                        break;
-                    case "cmp_lt":
-                        {
-                            Operator = "<";
-                        }
-                        break;
-                    case "cmp_le":
-                        {
-                            Operator = "<=";
-                        }
-                        break;
-                    case "cmp_gt":
-                        {
-                            Operator = ">";
-                        }
-                        break;
-                    case "cmp_ge":
-                        {
-                            Operator = ">=";
-                        }
-                        break;
-                }
-
                 TOperator NTOperator = new TOperator();
                 NTOperator.LineIndex = LineIndex;
-                NTOperator.Operator = Operator;
-                NTOperator.LinkVariable = GetParams[0].Trim();
+                NTOperator.Operator = OPCode;
+                NTOperator.Variables = GetParams;
 
                 _Operators.Add(NTOperator);
                 Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTOperator));
@@ -1040,6 +1022,35 @@ public class DecompileTracker
 
             _Jumps.Add(SetJump);
             Tracks.Add(LineIndex, new AssemblyLine(DefLine, SetJump));
+        }
+        else
+        if (OPCode == "iadd")
+        {
+            var SetIncrease = new TValIncrease();
+            if (GetParams.Count > 0)
+            {
+                if (GetParams[0].Contains(" "))
+                {
+                    SetIncrease.Variable = GetParams[0].Split(' ')[1].Trim();
+                    SetIncrease.Increase = GetParams[0].Split(' ')[0].Trim();
+                }
+                else
+                {
+                    SetIncrease.Increase = GetParams[0].Trim();
+                }
+            }
+
+            _TIncreases.Add(SetIncrease);
+            Tracks.Add(LineIndex, new AssemblyLine(DefLine, SetIncrease));
+        }
+        else
+        if (OPCode == "array_create" || OPCode == "array_setelement" || OPCode == "array_getelement" || OPCode == "array_length")
+        {
+            TArrayOP NTArray = new TArrayOP();
+            NTArray.ArrayOP = OPCode;
+            NTArray.Variables = GetParams;
+            _Arrays.Add(NTArray);
+            Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTArray));
         }
         else
         {
