@@ -205,21 +205,7 @@ public class PapyrusAsmDecoder
 
         return GlobalVariables;
     }
-    public void DeFunctionCode(DecompileTracker TrackerRef,bool CanSkipPscDeCode)
-    {
-        if (CanSkipPscDeCode)
-        {
-            return;
-        }
 
-        List<int> Keys = TrackerRef.Tracks.Keys.ToList();
-
-        for (int i = 0; i < Keys.Count; i++)
-        { 
-            var Track = TrackerRef.Tracks[Keys[i]];
-            //.......
-        }
-    }
     public List<FunctionBlock> DeFunction(List<PexString> TempStrings,bool CanSkipPscDeCode)
     {
         List<FunctionBlock> FunctionBlocks = new List<FunctionBlock>();
@@ -351,7 +337,7 @@ public class PapyrusAsmDecoder
                         LineIndex++;
                     }
 
-                    DeFunctionCode(Tracker,CanSkipPscDeCode);
+                    AsmExtend.DeFunctionCode(NFunctionBlock, Tracker, CanSkipPscDeCode);
 
                     NFunctionBlock.TracksRef = Tracker.Tracks;
 
