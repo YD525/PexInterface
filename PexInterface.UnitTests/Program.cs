@@ -12,19 +12,12 @@ namespace PexInterface.UnitTests
         public static void LoadPex(string PexPath)
         {
             Reader.LoadPex(PexPath);
+
             string PexContentJson = JsonConvert.SerializeObject(Reader);
-
-            AsmDecoder = new PapyrusAsmDecoder(Reader, PapyrusAsmDecoder.CodeGenStyle.Papyrus);
+            AsmDecoder = new PapyrusAsmDecoder(Reader);
             string DecodeJson = JsonConvert.SerializeObject(AsmDecoder);
-            var GetPsc = AsmDecoder.Decompile();
-
-            Console.Write(
-                PexContentJson +
-                "\n---------------------" 
-                + DecodeJson 
-                + "\n---------------------" 
-                + GetPsc
-                );
+            AsmDecoder.Decompile(out PexHeuristicAnalysis Analyst);
+            Console.Write(Analyst.GetPsc(PapyrusAsmDecoder.CodeGenStyle.CSharp));
         }
         static void Main(string[] args)
         {

@@ -40,17 +40,13 @@ public class PapyrusAsmDecoder
 
     #endregion
 
-    public static string Version = "1.0.1 Alpha";
-    public CodeGenStyle GenStyle = CodeGenStyle.Null;
+    public static string Version = "1.0.2 Alpha";
     public PexReader Reader;
-    string CodeSpace = "    ";
 
-    public PapyrusAsmDecoder(PexReader CurrentReader, CodeGenStyle GenStyle = CodeGenStyle.Papyrus)
+    public PapyrusAsmDecoder(PexReader CurrentReader)
     {
         this.Reader = CurrentReader;
-        this.GenStyle = GenStyle;
     }
-
     public enum ObjType
     {
         Null = 0, Variables = 1, Properties = 2, Functions = 3, DebugInfo = 5
@@ -108,111 +104,24 @@ public class PapyrusAsmDecoder
 
         return null;
     }
-
-    public void DeClass(List<PexString> TempStrings, ref StringBuilder PscCode)
+    public PscCls DeClass(List<PexString> TempStrings)
     {
+        PscCls CreateCls = new PscCls();
+
         if (Reader.Objects.Count > 0)
         {
             string ScriptName = TempStrings[Reader.Objects[0].NameIndex].Value;
             string ParentClass = TempStrings[Reader.Objects[0].ParentClassNameIndex].Value;
 
-            if (this.GenStyle == CodeGenStyle.Papyrus)
-            {
-                PscCode.AppendLine(string.Format("ScriptName {0} Extends {1}", ScriptName, ParentClass));
-            }
-            else
-            if (this.GenStyle == CodeGenStyle.CSharp)
-            {
-                PscCode.AppendLine("public class " + ScriptName.Trim() + " : " + ParentClass.Trim() + " \n{");
-            }
+            CreateCls.ClassName = ScriptName;
+            CreateCls.Inherit = ParentClass;
         }
+
+        return CreateCls;
     }
-
-    public void DeGlobalVariables(List<PexString> TempStrings, ref StringBuilder PscCode)
+    public List<AutoGlobalVariable> DeAutoGlobalVariables(List<PexString> TempStrings)
     {
-        if (GenStyle == CodeGenStyle.Papyrus)
-        {
-            PscCode.AppendLine(";GlobalVariables");
-        }
-        else
-        {
-            PscCode.AppendLine(CodeSpace + "//GlobalVariables");
-        }
-
-        for (int i = 0; i < TempStrings.Count; i++)
-        {
-            var Item = TempStrings[i];
-            ObjType CheckType = ObjType.Null;
-            var TempValue = QueryAnyByID(Item.Index, ref CheckType);
-
-            //if (Item.Value.Equals("KeysList"))
-            //{ 
-
-            //}
-
-            if (CheckType == ObjType.Variables)
-            {
-                PexVariable Variable = TempValue as PexVariable;
-                if (!Item.Value.StartsWith("::"))
-                {
-                    string GetVariableType = TempStrings[Variable.TypeNameIndex].Value;
-                    string TryGetValue = ObjToStr(Variable.DataValue);
-                    if (TryGetValue.Length == 0)
-                    {
-                        if (this.GenStyle == CodeGenStyle.Papyrus)
-                        {
-                            PscCode.AppendLine(string.Format(GetVariableType + " " + Item.Value));
-                        }
-                        else
-                        if (this.GenStyle == CodeGenStyle.CSharp)
-                        {
-                            PscCode.AppendLine(string.Format(CodeSpace + GetVariableType + " " + Item.Value + ";"));
-                        }
-                    }
-                    else
-                    {
-                        if (GetVariableType.ToLower().Equals("string"))
-                        {
-                            if (this.GenStyle == CodeGenStyle.Papyrus)
-                            {
-                                PscCode.AppendLine(string.Format(GetVariableType + " " + Item.Value
-                                + " = " + "\"" + TryGetValue + "\""));
-                            }
-                            else
-                            if (this.GenStyle == CodeGenStyle.CSharp)
-                            {
-                                PscCode.AppendLine(string.Format(CodeSpace + GetVariableType + " " + Item.Value
-                                + " = " + "\"" + TryGetValue + "\";"));
-                            }
-                        }
-                        else
-                        {
-                            if (this.GenStyle == CodeGenStyle.Papyrus)
-                            {
-                                PscCode.AppendLine(string.Format(GetVariableType + " " + Item.Value + " = " + TryGetValue));
-                            }
-                            else
-                            if (this.GenStyle == CodeGenStyle.CSharp)
-                            {
-                                PscCode.AppendLine(string.Format(CodeSpace + GetVariableType + " " + Item.Value + " = " + TryGetValue + ";"));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    public void DeAutoGlobalVariables(List<PexString> TempStrings, ref StringBuilder PscCode)
-    {
-        if (GenStyle == CodeGenStyle.Papyrus)
-        {
-            PscCode.AppendLine(";Global Properties");
-        }
-        else
-        {
-            PscCode.AppendLine(CodeSpace + "//Global Properties");
-        }
+        List<AutoGlobalVariable> AutoGlobalVariables = new List<AutoGlobalVariable>();
 
         for (int i = 0; i < TempStrings.Count; i++)
         {
@@ -230,87 +139,84 @@ public class PapyrusAsmDecoder
 
                 if (CheckVarName.StartsWith("::"))
                 {
-                    if (GetVariableType.Equals("globalvariable"))
-                    {
-                        GetVariableType = "GetVariableType";
-                    }
-
-                    string NodeStr = "";
-
-                    if (this.GenStyle == CodeGenStyle.Papyrus)
-                    {
-                        NodeStr = " ;";
-                    }
-                    else
-                    if (this.GenStyle == CodeGenStyle.CSharp)
-                    {
-                        NodeStr = " //";
-                    }
-
                     var RealValue = QueryAnyByID(Property.AutoVarNameIndex, ref CheckType);
+                    string GetRealValue = "";
                     if (CheckType == ObjType.Variables)
                     {
-                        string GetRealValue = ObjToStr((RealValue as PexVariable).DataValue);
-                        if (GetRealValue.Length > 0)
-                        {
-                            NodeStr += "Value:" + GetRealValue;
-                        }
-                        else
-                        {
-                            NodeStr = string.Empty;
-                        }
-                    }
-                    else
-                    {
-                        NodeStr = string.Empty;
+                        GetRealValue = ObjToStr((RealValue as PexVariable).DataValue);
                     }
 
-                    if (this.GenStyle == CodeGenStyle.Papyrus)
-                    {
-                        PscCode.AppendLine(string.Format(GetVariableType + " Property " + Item.Value + " Auto" + NodeStr));
-                    }
-                    else
-                    if (this.GenStyle == CodeGenStyle.CSharp)
-                    {
-                        PscCode.AppendLine(CodeSpace + "[Property(Auto = true)]");
-                        PscCode.AppendLine(string.Format(CodeSpace + GetVariableType + " " + Item.Value + ";" + NodeStr));
-                    }
+                    AutoGlobalVariable NAutoGlobalVariable = new AutoGlobalVariable();
+                    NAutoGlobalVariable.Name = Item.Value;
+                    NAutoGlobalVariable.Type = GetVariableType;
+                    NAutoGlobalVariable.DeValue = GetRealValue;
+
+                    AutoGlobalVariables.Add(NAutoGlobalVariable);
                 }
 
             }
         }
-    }
 
-    public string GenSpace(int Count)
+        return AutoGlobalVariables;
+    }
+    public List<GlobalVariable> DeGlobalVariables(List<PexString> TempStrings)
     {
-        string Space = "";
-        for (int i = 0; i < Count; i++)
+        List<GlobalVariable> GlobalVariables = new List<GlobalVariable>();
+
+        for (int i = 0; i < TempStrings.Count; i++)
         {
-            Space += CodeSpace;
-        }
-        return Space;
-    }
+            var Item = TempStrings[i];
+            ObjType CheckType = ObjType.Null;
+            var TempValue = QueryAnyByID(Item.Index, ref CheckType);
 
-    public string DeFunctionCode(CodeGenStyle Style,DecompileTracker Tracker, int Rows,bool CanSkipPscDeCode)
+            if (CheckType == ObjType.Variables)
+            {
+                PexVariable Variable = TempValue as PexVariable;
+                if (!Item.Value.StartsWith("::"))
+                {
+                    string GetVariableType = TempStrings[Variable.TypeNameIndex].Value;
+                    string TryGetValue = ObjToStr(Variable.DataValue);
+                    if (TryGetValue.Length == 0)
+                    {
+                        GlobalVariable NGlobalVariable = new GlobalVariable();
+                        NGlobalVariable.Type = GetVariableType;
+                        NGlobalVariable.Name = Item.Value;
+                        NGlobalVariable.Value = "";
+
+                        GlobalVariables.Add(NGlobalVariable);
+                    }
+                    else
+                    {
+                        GlobalVariable NGlobalVariable = new GlobalVariable();
+                        NGlobalVariable.Type = GetVariableType;
+                        NGlobalVariable.Name = Item.Value;
+
+                        if (GetVariableType.ToLower().Equals("string"))
+                        {
+                            NGlobalVariable.Value = "\"" + TryGetValue + "\"";
+                            GlobalVariables.Add(NGlobalVariable);
+                        }
+                        else
+                        {
+                            NGlobalVariable.Value = TryGetValue;
+                            GlobalVariables.Add(NGlobalVariable);
+                        }
+                    }
+                }
+            }
+        }
+
+        return GlobalVariables;
+    }
+    public void DeFunctionCode(DecompileTracker TrackerRef, int Rows,bool CanSkipPscDeCode)
     {
-        int SpaceCount = 2;
-        var TempStr = "";
         for (int i = 0; i < Rows; i++)
         {
-            if (Tracker.Tracks.ContainsKey(i))
+            if (TrackerRef.Tracks.ContainsKey(i))
             {
                 if (!CanSkipPscDeCode)
                 {
-                    Tracker.Tracks[i].Decompile(Style, Tracker);
-                }
-
-                if (Tracker.Tracks[i].Code.Length == 0)
-                {
-                    TempStr += GenSpace(SpaceCount) + Tracker.Tracks[i].Assembly + "\n";
-                }
-                else
-                {
-                    TempStr += GenSpace(SpaceCount) + Tracker.Tracks[i].Code + Tracker.Tracks[i].GetNote(Style) + "\n";
+                    TrackerRef.Tracks[i].Decompile(TrackerRef);
                 }
             }
             else
@@ -318,15 +224,10 @@ public class PapyrusAsmDecoder
                 throw new Exception("Unrecognized code exists.");
             }
         }
-
-        if (TempStr.EndsWith("\n"))
-        {
-            TempStr = TempStr.Substring(0, TempStr.Length - "\n".Length);
-        }
-        return TempStr;
     }
-    public void DeFunction(List<PexString> TempStrings, ref StringBuilder PscCode,bool CanSkipPscDeCode)
+    public List<FunctionBlock> DeFunction(List<PexString> TempStrings,bool CanSkipPscDeCode)
     {
+        List<FunctionBlock> FunctionBlocks = new List<FunctionBlock>();
         for (int i = 0; i < TempStrings.Count; i++)
         {
             var Item = TempStrings[i];
@@ -340,9 +241,8 @@ public class PapyrusAsmDecoder
 
                 if (Function.Count == 1)
                 {
+                    FunctionBlock NFunctionBlock = new FunctionBlock();
                     var GetFunc1st = Function[0];
-
-                    string GenParams = "";
 
                     string ReturnType = TempStrings[GetFunc1st.ReturnTypeIndex].Value;
 
@@ -360,6 +260,11 @@ public class PapyrusAsmDecoder
 
                     ReturnType = ReturnType.Trim();
 
+                    NFunctionBlock.FunctionName = Item.Value;
+                    NFunctionBlock.ReturnType = ReturnType;
+
+                    List<LocalVariable> LocalVariables = new List<LocalVariable>();
+
                     for (int ir = 0; ir < GetFunc1st.NumParams; ir++)
                     {
                         if (GetFunc1st.Parameters.Count > ir)
@@ -368,36 +273,17 @@ public class PapyrusAsmDecoder
                             string GetType = TempStrings[GetFunc1st.Parameters[ir].TypeIndex].Value;
                             string GetParamName = TempStrings[GetParam.NameIndex].Value;
 
-                            GenParams += string.Format("{0} {1},", GetType, GetParamName);
+                            LocalVariable NLocalVariable = new LocalVariable();
+                            NLocalVariable.Name = GetParamName;
+                            NLocalVariable.Type = GetType;
+
+                            LocalVariables.Add(NLocalVariable);
                         }
                     }
 
-                    if (GenParams.EndsWith(","))
-                    {
-                        GenParams = GenParams.Substring(0, GenParams.Length - 1);
-                    }
-
-                    string GenLine = "";
-
-                    if (GenStyle == CodeGenStyle.Papyrus)
-                    {
-                        GenLine = string.Format("{0} Function {1}({2})", ReturnType, Item.Value, GenParams);
-                    }
-                    else
-                    if (GenStyle == CodeGenStyle.CSharp)
-                    {
-                        var TempType = ReturnType;
-                        if (TempType.Length == 0)
-                        {
-                            TempType = "void";
-                        }
-                        GenLine = string.Format(CodeSpace + "public {0} {1}({2})\n", TempType, Item.Value, GenParams) + CodeSpace + "{";
-                    }
-
-                    PscCode.AppendLine(GenLine);
+                    NFunctionBlock.Params = LocalVariables;
 
                     int LineIndex = 0;
-                    string TempBlock = "";
                     DecompileTracker Tracker = new DecompileTracker(Item.Value);
 
                     foreach (var GetInstruction in GetFunc1st.Instructions)
@@ -470,62 +356,74 @@ public class PapyrusAsmDecoder
                         LineIndex++;
                     }
 
-                    TempBlock += DeFunctionCode(GenStyle,Tracker,LineIndex,CanSkipPscDeCode);
+                    DeFunctionCode(Tracker,LineIndex,CanSkipPscDeCode);
 
-                    PscCode.AppendLine(TempBlock);
+                    NFunctionBlock.TracksRef = Tracker.Tracks;
 
-                    if (GenStyle == CodeGenStyle.Papyrus)
-                    {
-                        PscCode.AppendLine("EndFunction");
-                    }
-                    else
-                    if (GenStyle == CodeGenStyle.CSharp)
-                    {
-                        PscCode.AppendLine(CodeSpace + "}\n");
-                    }
+                    FunctionBlocks.Add(NFunctionBlock);
                 }
             }
         }
+        return FunctionBlocks;
     }
-
-    public List<PexString> CurrentStrings = new List<PexString>();
-    public string Decompile(bool CanSkipPscDeCode = false)
+    public string Decompile(out PexHeuristicAnalysis Analyst,CodeGenStyle Style = CodeGenStyle.CSharp, bool CanSkipPscDeCode = false)
     {
-        StringBuilder PscCode = new StringBuilder();
         List<PexString> TempStrings = new List<PexString>();
 
         TempStrings.AddRange(Reader.StringTable);
+    
+        var GenPsc = DeClass(TempStrings);
 
-        CurrentStrings = TempStrings;
+        GenPsc.GlobalVariables = DeGlobalVariables(TempStrings);
 
-        DeClass(TempStrings, ref PscCode);
+        GenPsc.AutoGlobalVariables = DeAutoGlobalVariables(TempStrings);  
+        
+        GenPsc.Functions = DeFunction(TempStrings,CanSkipPscDeCode);
 
-        DeGlobalVariables(TempStrings, ref PscCode);
-        PscCode.Append("\n");
-        DeAutoGlobalVariables(TempStrings, ref PscCode);
-        PscCode.Append("\n");
-        //Function XXX() EndFunction
-        DeFunction(TempStrings, ref PscCode,CanSkipPscDeCode);
+        Analyst = new PexHeuristicAnalysis(GenPsc);
 
-
-        if (this.GenStyle == CodeGenStyle.CSharp)
-        {
-            PscCode.AppendLine("}");
-        }
-
-        var GetCode = PscCode.ToString();
-
-        return GetCode;
+        return Analyst.GetPsc(Style);
     }
-
 }
 
-public class Function
+public class LocalVariable
 {
-    public int LineIndex = 0;
+    public string Name = "";
+    public string Type = "";
+    public string Value = "";
+}
+public class GlobalVariable
+{
+    public string Type = "";
+    public string Name = "";
+    public string Value = "";
+}
 
-    public string ParentFunction = "";
-    public string SelfVariable = "";
+public class AutoGlobalVariable
+{
+    public string Type = "";
+    public string Name = "";
+    public string DeValue = "";
+}
+
+public class PscCls
+{
+    public string ClassName = "";
+    public string Inherit = "";
+
+    public List<GlobalVariable> GlobalVariables = new List<GlobalVariable>();
+    public List<AutoGlobalVariable> AutoGlobalVariables = new List<AutoGlobalVariable>();
+    public List<FunctionBlock> Functions = new List<FunctionBlock>();
+}
+public class FunctionBlock
+{
+    public string FunctionName = "";
+    public List<LocalVariable> Params = new List<LocalVariable>();
+    public string ReturnType = "";
+
+    public int StartIndex = 0;
+
+    public Dictionary<int, AssemblyLine> TracksRef = null;
 }
 
 public class TVariable
@@ -646,6 +544,8 @@ public class AssemblyLine
 {
     public string Assembly = "";
     public string Code = "";
+    public int SpaceCount = 0;
+    public int Score = 0;
     public object TrackRef;
     public AssemblyLine(string Assembly, object Track)
     {
@@ -658,7 +558,7 @@ public class AssemblyLine
         this.Assembly = Assembly;
         this.TrackRef = null;
     }
-    public void Decompile(CodeGenStyle Style,DecompileTracker Tracker)
+    public void Decompile(DecompileTracker Tracker)
     { 
     
     }
