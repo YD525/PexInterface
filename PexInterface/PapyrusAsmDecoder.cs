@@ -7,6 +7,8 @@ using PexInterface;
 using static PapyrusAsmDecoder;
 using System.Net.Http.Headers;
 using System.Data.OleDb;
+using System.IO;
+using System.Linq;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -210,12 +212,17 @@ public class PapyrusAsmDecoder
     }
     public void DeFunctionCode(DecompileTracker TrackerRef,bool CanSkipPscDeCode)
     {
-        foreach (var GetTrack in TrackerRef.Tracks)
+        if (CanSkipPscDeCode)
         {
-            if (!CanSkipPscDeCode)
-            {
-                GetTrack.Value.Decompile(TrackerRef);
-            }
+            return;
+        }
+
+        List<int> Keys = TrackerRef.Tracks.Keys.ToList();
+
+        for (int i = 0; i < Keys.Count; i++)
+        { 
+            var Track = TrackerRef.Tracks[Keys[i]];
+            //.......
         }
     }
     public List<FunctionBlock> DeFunction(List<PexString> TempStrings,bool CanSkipPscDeCode)
@@ -549,10 +556,6 @@ public class AssemblyLine
         this.Assembly = Assembly;
         this.TrackRef = null;
     }
-    public void Decompile(DecompileTracker Tracker)
-    { 
-    
-    }
 
     public string GetNote(CodeGenStyle Style)
     {
@@ -611,7 +614,7 @@ public class DecompileTracker
     {
         this.FuncName = FuncName;
     }
-    public List<string> CreatParams(string Line)
+    public List<string> CreateParams(string Line)
     {
         List<string> Params = new List<string>();
         foreach (var Get in Line.Split(new[] { "::" }, StringSplitOptions.None))
@@ -640,7 +643,7 @@ public class DecompileTracker
     }
     public void CheckCode(int LineIndex, string OPCode, string Line)
     {
-        List<string> GetParams = CreatParams(Line);
+        List<string> GetParams = CreateParams(Line);
         string DefLine = OPCode + " " + Line;
 
         if (OPCode == "return")
