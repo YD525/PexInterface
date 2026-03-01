@@ -370,9 +370,9 @@ public class PapyrusAsmDecoder
 
         GenPsc.GlobalVariables = DeGlobalVariables(TempStrings);
 
-        GenPsc.AutoGlobalVariables = DeAutoGlobalVariables(TempStrings);  
-        
-        GenPsc.Functions = DeFunction(TempStrings,CanSkipPscDeCode);
+        GenPsc.AutoGlobalVariables = DeAutoGlobalVariables(TempStrings);
+
+        GenPsc.Functions = DeFunction(TempStrings, CanSkipPscDeCode);
 
         Analyst = new PexHeuristicAnalysis(GenPsc);
     }

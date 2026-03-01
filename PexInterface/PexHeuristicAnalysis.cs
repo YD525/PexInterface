@@ -9,7 +9,7 @@ namespace PexInterface
     // See LICENSE file in the project root for full license information.
     public class PexHeuristicAnalysis
     {
-        public static string Version = "1.0.0";
+        public static string Version = "1.0.0 Alpha";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
       
