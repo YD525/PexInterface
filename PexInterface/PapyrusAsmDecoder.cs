@@ -206,7 +206,7 @@ public class PapyrusAsmDecoder
         return GlobalVariables;
     }
 
-    public List<FunctionBlock> DeFunction(List<PexString> TempStrings,bool CanSkipPscDeCode)
+    public List<FunctionBlock> DeFunction(PscCls ParentCls,List<PexString> TempStrings,bool CanSkipPscDeCode)
     {
         List<FunctionBlock> FunctionBlocks = new List<FunctionBlock>();
         for (int i = 0; i < TempStrings.Count; i++)
@@ -341,7 +341,7 @@ public class PapyrusAsmDecoder
                     NFunctionBlock.FunctionCode = FunctionCode;
                     NFunctionBlock.TracksRef = Tracker.Tracks;
 
-                    AsmExtend.DeFunctionCode(NFunctionBlock, Tracker, CanSkipPscDeCode);
+                    AsmExtend.DeFunctionCode(ParentCls, NFunctionBlock, Tracker, CanSkipPscDeCode);
 
                     FunctionBlocks.Add(NFunctionBlock);
                 }
@@ -361,7 +361,7 @@ public class PapyrusAsmDecoder
 
         GenPsc.AutoGlobalVariables = DeAutoGlobalVariables(TempStrings);
 
-        GenPsc.Functions = DeFunction(TempStrings, CanSkipPscDeCode);
+        GenPsc.Functions = DeFunction(GenPsc,TempStrings, CanSkipPscDeCode);
 
         Analyst = new PexHeuristicAnalysis(GenPsc);
     }
@@ -395,6 +395,30 @@ public class PscCls
     public List<GlobalVariable> GlobalVariables = new List<GlobalVariable>();
     public List<AutoGlobalVariable> AutoGlobalVariables = new List<AutoGlobalVariable>();
     public List<FunctionBlock> Functions = new List<FunctionBlock>();
+
+    public GlobalVariable QueryGlobalVariable(string Name)
+    {
+        foreach (var Get in GlobalVariables)
+        {
+            if (Get.Name.Equals(Name))
+            {
+                return Get;
+            }
+        }
+        return null;
+    }
+    public AutoGlobalVariable QueryAutoGlobalVariable(string Name)
+    {
+        foreach (var Get in AutoGlobalVariables)
+        {
+            if (Get.Name.Equals(Name))
+            {
+                return Get;
+            }
+        }
+        return null;
+    }
+
 }
 public class FunctionBlock
 {
@@ -575,7 +599,7 @@ public class DecompileTracker
     public List<TArrayOP> _Arrays = new List<TArrayOP>();
     public List<TVariableSetter> _VariableSetters = new List<TVariableSetter>();
 
-    public string QueryVariables(string TempName)
+    public string QueryMethodVariable(string TempName)
     {
         TempName = TempName.Trim();
         foreach (var Get in this._CastLinks)

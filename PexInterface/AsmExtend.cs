@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -8,7 +9,20 @@ namespace PexInterface
 {
     public class AsmExtend
     {
-        public static void DeFunctionCode(FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
+        public class TempVariable
+        {
+            public string Type = "";
+            public string Variable = "";
+            public int LinkLineIndex = 0;
+            public TempVariable(string Variable,int LineIndex)
+            {
+                this.Variable = Variable;
+                this.LinkLineIndex = LineIndex;
+            }
+        }
+
+   
+        public static void DeFunctionCode(PscCls ParentCls,FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
         {
             if (Func.FunctionName == "OnMenuOpenST")
             {
@@ -17,7 +31,7 @@ namespace PexInterface
                     return;
                 }
 
-                List<int> CheckPoint = new List<int>();
+                List<TempVariable> TempVariables = new List<TempVariable>();
                 List<int> Keys = TrackerRef.Tracks.Keys.ToList();
 
                 for (int i = 0; i < Keys.Count; i++)
@@ -29,16 +43,77 @@ namespace PexInterface
 
                     if (Track is TVariable)
                     {
-                        var Get = TrackerRef.QueryVariables(((TVariable)Track).VariableName);
-                        if (Get == "")
+                        var Variable = (TVariable)Track;
+
+                        var Get = TrackerRef.QueryMethodVariable(Variable.VariableName);
+                        if (Get == "" && Variable.VariableName.Length > 0)
                         {
-                            CheckPoint.Add(Key);
+                            var GlobalVariable = ParentCls.QueryGlobalVariable(Variable.VariableName);
+                            if (GlobalVariable == null)
+                            {
+                                var AutoVariable = ParentCls.QueryAutoGlobalVariable(Variable.VariableName);
+
+                                if (AutoVariable == null)
+                                {
+                                    TempVariables.Add(new TempVariable(Variable.VariableName, i));
+                                }
+                                else
+                                {
+                                  
+                                }
+                            }
+                            else
+                            {
+                               
+                            }
+                        }
+                        else
+                        { 
+                        
                         }
                     }
                     else
                     if (Track is TFunction)
                     {
+                        var Function = (TFunction)Track;
+                        if (Function.Params.Count > 0)
+                        {
+                            foreach (var GetVariable in Function.Params)
+                            {
+                                var Get = TrackerRef.QueryMethodVariable(GetVariable);
+                                if (Get == "" && GetVariable.Length > 0)
+                                {
+                                    var GlobalVariable = ParentCls.QueryGlobalVariable(GetVariable);
+                                    if (GlobalVariable == null)
+                                    {
+                                        var AutoVariable = ParentCls.QueryAutoGlobalVariable(GetVariable);
 
+                                        if (AutoVariable == null)
+                                        {
+                                            TempVariables.Add(new TempVariable(GetVariable, i));
+                                        }
+                                        else
+                                        {
+
+                                        }
+                                    }
+                                    else
+                                    {
+
+                                    }
+                                }
+                                else
+                                {
+                                    foreach (var GetTempVar in TempVariables)
+                                    {
+                                        if (GetTempVar.Variable.Equals(Get))
+                                        { 
+                                        
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     else
                     if (Track is TProp)
