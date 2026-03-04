@@ -87,7 +87,7 @@ namespace PexInterface
                                             //Test
                                             AsmLine.PSCCode = GetVariableName + " = " + AsmLine.Links.Tail.Prev.GetValue() + "." + GetFunctionName + "();";
 
-                                            TrackerRef.Variables.Add(new AsmOffset(i, 2), GetVariableName, 0, new List<AsmLink>() {
+                                            TrackerRef.Variables.Add(new AsmOffset(i, 2), GetVariableName, State, new List<AsmLink>() {
                                                 AsmLine.Links.Tail.Prev,
                                                 AsmLine.Links.GetHead()
                                             }, VariableAccess.Set);

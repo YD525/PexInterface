@@ -10,6 +10,7 @@ using System.Diagnostics.SymbolStore;
 using Microsoft.SqlServer.Server;
 using System.Xml.Linq;
 using System.Runtime.CompilerServices;
+using static PapyrusAsmDecoder;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -211,6 +212,24 @@ public class PapyrusAsmDecoder
 
         return GlobalVariables;
     }
+
+    public class AsmInFo
+    {
+        public PexVariable Variable = null;
+        public PexFunction Function = null;
+        public PexProperty Property = null;
+
+    }
+    public class AsmOrder
+    {
+        public string Value = "";
+        public AsmInFo InFo = null;
+
+        public AsmOrder(string Value)
+        {
+          this.Value = Value.Trim();
+        }
+    }
     public List<FunctionBlock> DeFunction(PscCls ParentCls,List<PexString> TempStrings,bool CanSkipPscDeCode)
     {
         List<FunctionBlock> FunctionBlocks = new List<FunctionBlock>();
@@ -282,20 +301,15 @@ public class PapyrusAsmDecoder
                     {
                         string GetOPName = GetInstruction.GetOpcodeName();
 
-                        List<int> IntValues = new List<int>();
-
-                        string CurrentLine = "";
+                        List<AsmOrder> Orders = new List<AsmOrder>();
                         PexFunction PexFunc = null;
 
                         foreach (var GetArg in GetInstruction.Arguments)
                         {
+                            AsmOrder Order = null;
                             var GetIndex = ObjToInt(GetArg.Value);
                             if (GetIndex > 0)
                             {
-                                string GetValue = "";
-
-
-                                IntValues.Add(GetArg.Type);
                                 if (GetArg.Type == 3)
                                 {
 
@@ -320,26 +334,47 @@ public class PapyrusAsmDecoder
 
                                     }
 
-                                    GetValue = GetObj.Value;
+                                    Order = new AsmOrder(GetObj.Value.Trim());
 
                                     ObjType VariableType = ObjType.Null;
-                                    var GetVariableTypes = QueryAnyByID(GetObj.Index, ref VariableType);
+                                    var GetVariable = QueryAnyByID(GetObj.Index, ref VariableType);
+                                    if (GetVariable != null)
+                                    {
+                                        if (VariableType == ObjType.Variables)
+                                        {
+                                            PexVariable Variable = GetVariable as PexVariable;
+                                            Order.InFo = new AsmInFo();
+                                            Order.InFo.Variable = Variable;
+                                        }
+                                       
+                                        if (VariableType == ObjType.Functions)
+                                        {
+                                            PexFunction Func = GetVariable as PexFunction;
+                                            Order.InFo = new AsmInFo();
+                                            Order.InFo.Function = Func;
+                                        }
+                                        
+                                        if (VariableType == ObjType.Properties)
+                                        {
+                                            PexProperty Property = GetVariable as PexProperty;
+                                            Order.InFo = new AsmInFo();
+                                            Order.InFo.Property = Property;
+                                        }
+                                    }
                                 }
 
-                                if (GetArg.Type == 2)
+                                if (Order != null)
                                 {
-                                    CurrentLine += "\"" + GetValue + "\"" + " ";
-                                }
-                                else
-                                {
-                                    CurrentLine += GetValue + " ";
+                                    if (GetArg.Type == 2)
+                                    {
+                                        Order.Value = "\"" + Order.Value + "\"";
+                                    }
+
+                                    Orders.Add(Order);
                                 }
                             }
                         }
-
-                        CurrentLine = CurrentLine.Trim();
-                        FunctionCode += GetOPName + " " + CurrentLine + "\n";
-                        Tracker.CheckCode(LineIndex,GetOPName,CurrentLine);
+                        Tracker.CheckCode(LineIndex,GetOPName,Orders);
                         LineIndex++;
                     }
 
@@ -487,6 +522,7 @@ public class AsmLink
 {
     private TokenSeparator Separator = TokenSeparator.Null;
     private string Value = null;
+    public AsmInFo InFo = null;
     public string UPDateValue = null;
     private AsmLink Head = null;
     public AsmLink Next = null;
@@ -631,11 +667,12 @@ public class AsmLink
         }
         return false;
     }
-    public void SetValue(string Value, TokenSeparator Separator)
+    public void SetValue(string Value,AsmInFo InFo, TokenSeparator Separator)
     {
         if (this.Value == null)
         {
             this.Value = Value;
+            this.InFo = InFo;
             this.Separator = Separator;
             Tail = this;
             Head = null;
@@ -647,6 +684,7 @@ public class AsmLink
             var NewNode = new AsmLink
             {
                 Value = Value,
+                InFo =  InFo,
                 Separator = Separator,
                 Prev = Head.Tail,
                 Head = Head
@@ -777,30 +815,22 @@ public class AsmLink
         return Line;
     }
 
-    public static void ParseLink(ref AsmLink Links, string Str)
+    public static void ParseLink(ref AsmLink Links, List<AsmOrder> Orders)
     {
-        var Matches = Regex.Matches(Str, @"(::)|(""[^""]*"")|(\S+)|(\s+)");
-
         TokenSeparator PendingSeparator = TokenSeparator.Null;
 
-        foreach (Match M in Matches)
+        foreach (var Order in Orders)
         {
-            var Token = M.Value;
-
-            if (Token == "::")
+            if (Order.Value.StartsWith("::"))
             {
                 PendingSeparator = TokenSeparator.DoubleColon;
-                continue;
+                Links.SetValue(Order.Value.Substring("::".Length),Order.InFo,PendingSeparator);
             }
-
-            if (string.IsNullOrWhiteSpace(Token))
+            else
             {
                 PendingSeparator = TokenSeparator.Space;
-                continue;
+                Links.SetValue(Order.Value,Order.InFo,PendingSeparator);
             }
-
-            Links.SetValue(Token, PendingSeparator);
-            PendingSeparator = TokenSeparator.Null;
         }
     }
 }
@@ -1015,9 +1045,9 @@ public class AsmBase
     public int SpaceCount = 0;
     public AsmLink Links = new AsmLink();
 
-    protected void ParseLink(string Str)
+    protected void ParseLink(List<AsmOrder> Orders)
     {
-        AsmLink.ParseLink(ref Links, Str);
+        AsmLink.ParseLink(ref Links, Orders);
     }
 }
 public class AsmCode:AsmBase
@@ -1026,22 +1056,24 @@ public class AsmCode:AsmBase
     { 
        this.LineIndex = LineIndex;
     }
-    public void Parse(string OPCode, string Line)
+    public void Parse(string OPCode, List<AsmOrder> Orders)
     {
         this.OPCode = OPCode.Trim().ToLower();
-        this.ParseLink(Line.Trim());
+        this.ParseLink(Orders);
     }
 
     public string GetAsmCode()
     {
-        return string.Join(" ",
+        var SetStr = string.Join(" ",
             new[]
             {
                 this.OPCode,
-                this.Links?.GetAsmCode()
+                this.Links?.GetAsmCode().Trim()
             }
             .Where(Str => !string.IsNullOrWhiteSpace(Str))
         );
+       
+        return SetStr;
     }
     public string GetCode()
     {
@@ -1074,10 +1106,10 @@ public class DecompileTracker
     public ControlFlowTracker ControlFlows = new ControlFlowTracker();
 
     public List<AsmCode> Lines = new List<AsmCode>();
-    public void CheckCode(int LineIndex,string OPCode,string Line)
+    public void CheckCode(int LineIndex,string OPCode,List<AsmOrder> Orders)
     {
         AsmCode NewLine = new AsmCode(LineIndex);
-        NewLine.Parse(OPCode,Line);
+        NewLine.Parse(OPCode,Orders);
         Lines.Add(NewLine);
 
         //if (OPCode == "return")

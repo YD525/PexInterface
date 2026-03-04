@@ -363,12 +363,12 @@ namespace PexInterface
         {
             public ushort Index { get; set; }
             public string Value { get; set; }
-            public string ValueWide { get; set; }
+            //public string ValueWide { get; set; }
 
             public PexString()
             {
                 Value = "";
-                ValueWide = "";
+                //ValueWide = "";
             }
         }
 
@@ -806,7 +806,7 @@ namespace PexInterface
                 {
                     Index = i,
                     Value = PexInterop.GetStringUtf8(i),
-                    ValueWide = PexInterop.GetStringWide(i)
+                    //ValueWide = PexInterop.GetStringWide(i)
                 });
             }
         }
@@ -1262,14 +1262,14 @@ namespace PexInterface
             return "";
         }
 
-        public string GetStringWide(ushort index)
-        {
-            if (index < StringTable.Count)
-            {
-                return StringTable[(int)index].ValueWide;
-            }
-            return "";
-        }
+        //public string GetStringWide(ushort index)
+        //{
+        //    if (index < StringTable.Count)
+        //    {
+        //        return StringTable[(int)index].ValueWide;
+        //    }
+        //    return "";
+        //}
 
         public string GetVariableValueAsString(PexVariable variable)
         {
