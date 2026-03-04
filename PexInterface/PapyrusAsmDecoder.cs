@@ -436,13 +436,7 @@ public class FunctionBlock
     public Dictionary<int, AssemblyLine> TracksRef = null;
 }
 
-public class TVariable
-{
-    public int LineIndex = 0;
 
-    public string Tag = "";
-    public string VariableName = "";
-}
 
 public class CastLink
 {
@@ -474,9 +468,17 @@ public class CastLink
 }
 
 
+public enum TokenSeparator
+{
+    None,
+    Space,
+    DoubleColon
+}
+
 public class AsmLink
 {
-    public string Value = null;
+    public TokenSeparator Separator = TokenSeparator.None;
+    public string Value = "";
     public AsmLink Next = null;
     public AsmLink Prev = null;   
     public AsmLink Tail = null;
@@ -494,8 +496,30 @@ public class AsmLink
         }
         return SetValue;
     }
+    public AsmLink GetHead()
+    {
+        var Node = this;
+        while (Node.Prev != null)
+            Node = Node.Prev;
+        return Node;
+    }
 
+    public void Remove()
+    {
+        var Head = GetHead();
 
+        if (Prev != null)
+            Prev.Next = Next;
+
+        if (Next != null)
+            Next.Prev = Prev;
+
+        if (this == Head.Tail)
+            Head.Tail = Prev;
+
+        Next = null;
+        Prev = null;
+    }
     public bool IsTemp()
     {
         if (IsNull())
@@ -621,7 +645,7 @@ public class AsmLink
     }
     public void ForEachForward(Action<AsmLink> Action)
     {
-        var Node = this;
+        var Node = GetHead();
         while (Node != null)
         {
             if (Node != null)
@@ -632,14 +656,36 @@ public class AsmLink
     }
     public void ForEachBackward(Action<AsmLink> Action)
     {
-        var Node = Tail;
+        var Head = GetHead();
+        var Node = Head.Tail;
+
         while (Node != null)
         {
-            if (Node != null)
             Action(Node);
-
             Node = Node.Prev;
         }
+    }
+    public List<AsmLink> GetNodesBefore()
+    {
+        var Result = new List<AsmLink>();
+        var Node = Prev;
+        while (Node != null)
+        {
+            Result.Insert(0,Node);
+            Node = Node.Prev;
+        }
+        return Result;
+    }
+    public List<AsmLink> GetNodesAfter()
+    {
+        var Result = new List<AsmLink>();
+        var Node = Next; 
+        while (Node != null)
+        {
+            Result.Add(Node); 
+            Node = Node.Next;
+        }
+        return Result;
     }
 }
 public class AsmBase
@@ -670,22 +716,17 @@ public class AsmBase
     }
 }
 
-public class TProp
+public class AsmVariable:AsmBase
 {
-    public int LineIndex = 0;
-
-    public List<string> Fronts = new List<string>();
-    public string PropName = "";
-    public string LinkVariable = "";
-
-    public int IsGetOrSet = 0;
-    public bool Self = false;
+    public string Tag = "";
+    public string VariableName = "";
 }
 
-public class AsmCall:AsmBase
+public class AsmCode:AsmBase
 {
     public string Call = "";
     public string VariableLink = "";
+    public string Param = "";
 
     public void Parse(string Line)
     {
@@ -696,99 +737,35 @@ public class AsmCall:AsmBase
         }
 
         this.ParseLink(Line);
-
-        if (this.Links.Tail.IsTemp())
-        {
-            this.VariableLink = this.Links.Tail.GetValue();
-        }
     }
-}
 
-public class TStrcat
-{
-    public int LineIndex = 0;
-
-    public string LinkVariable = "";
-
-    public string Value = "";
-
-    public string MergeStr = "";
-
-    public bool IsLeft = false;
-}
-
-public class TOperator
-{
-    public int LineIndex = 0;
-
-    public string Operator = "";
-
-    public List<string> Variables = new List<string>();
-}
-
-public class TReturn
-{
-    public int LineIndex = 0;
-
-    public List<string> ReturnVariables = new List<string>();
-    public TReturn(int LineIndex, List<string> Params)
+    public void GetCode()
     {
-        this.LineIndex = LineIndex;
-        this.ReturnVariables = Params;
-    }
-}
-
-public class TJump
-{
-    public int LineIndex = 0;
-
-    public string Jump = "";
-    public string Variable = "";
-}
-
-public class TArrayOP
-{
-    public string ArrayOP = "";
-    public List<string> Variables = new List<string>();
-}
-
-public class TValIncrease
-{
-    public string Variable = "";
-    public string Increase = "";
-}
-public class TVariableSetter
-{
-    public int LineIndex = 0;
-
-    public string Parent = "";
-    public string Child = "";
-}
-
-public class AssemblyLine
-{
-    public string Assembly = "";
-    public string Code = "";
-    public int SpaceCount = 0;
-    public int Score = 0;
-    public object TrackRef;
-    public AssemblyLine(string Assembly, object Track)
-    {
-        this.Assembly = Assembly;
-        this.TrackRef = Track;
+        string Line = "";
+        this.Links.ForEachForward(new Action<AsmLink>((Word) => {
+            Line += Word.Value + " ";
+        }));
+        string Code = this.Call +
     }
 
-    public AssemblyLine(string Assembly)
-    {
-        this.Assembly = Assembly;
-        this.TrackRef = null;
-    }
-
-    public string GetNote(CodeGenStyle Style)
-    {
-        return "//" + this.Assembly;
-    }
+    ///// <summary>
+    ///// XXX = Func() I need to know if Temp has been created.If it weren't for this, it should be equal to.
+    ///// </summary>
+    //public void FindVariableLink()
+    //{
+    //    if (Call.Length > 0)
+    //    {
+    //        if (this.Links.Tail.IsTemp())
+    //        {
+    //            this.VariableLink = this.Links.Tail.GetValue();
+    //            this.Links.Tail.Remove();
+    //        }
+    //    }
+    //}
+  
 }
+
+
 
 public class DecompileTracker
 {
@@ -808,68 +785,12 @@ public class DecompileTracker
     public List<TArrayOP> _Arrays = new List<TArrayOP>();
     public List<TVariableSetter> _VariableSetters = new List<TVariableSetter>();
 
-    public string QueryMethodVariable(string TempName)
-    {
-        TempName = TempName.Trim();
-        foreach (var Get in this._CastLinks)
-        {
-            if (Get.Find(TempName))
-            {
-                foreach (var GetLinkValue in Get.Links)
-                {
-                    foreach (var GetVariable in _PexVariables)
-                    {
-                        if (GetVariable.Tag.Equals(GetLinkValue))
-                        {
-                            return GetVariable.VariableName.Trim();
-                        }
-                    }
-                }
-                break;
-            }
-        }
-
-        foreach (var GetVariable in _PexVariables)
-        {
-            if (GetVariable.Tag.Equals(TempName))
-            {
-                return GetVariable.VariableName.Trim();
-            }
-        }
-
-        return string.Empty;
-    }
     public DecompileTracker(string FuncName)
     {
         this.FuncName = FuncName;
     }
-    public List<string> CreateParams(string Line)
-    {
-        List<string> Params = new List<string>();
-        foreach (var Get in Line.Split(new[] { "::" }, StringSplitOptions.None))
-        {
-            if (Get.Trim().Length > 0)
-            {
-                Params.Add(Get);
-            }
-        }
-        return Params;
-    }
-
-    public string FormatVar(string VariableName)
-    {
-        VariableName = VariableName.Trim();
-        if (VariableName.EndsWith("_Var"))
-        {
-            VariableName = VariableName.Substring(0, VariableName.Length - "_Var".Length);
-        }
-        else
-        if (VariableName.EndsWith("_var"))
-        {
-            VariableName = VariableName.Substring(0, VariableName.Length - "_var".Length);
-        }
-        return VariableName;
-    }
+   
+   
     public void CheckCode(int LineIndex, string OPCode, string Line)
     {
         List<string> GetParams = CreateParams(Line);
