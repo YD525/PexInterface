@@ -671,7 +671,7 @@ public class AsmLink
         }
         return false;
     }
-    public void SetValue(string Value,AsmInFo InFo, TokenSeparator Separator)
+    public void SetValue(string Value, AsmInFo InFo, TokenSeparator Separator)
     {
         if (this.Value == null)
         {

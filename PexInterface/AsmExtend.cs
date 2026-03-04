@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using static PapyrusAsmDecoder;
 using static PexInterface.PexReader;
 
 namespace PexInterface
@@ -64,15 +65,45 @@ namespace PexInterface
                             var Head = AsmLine.Links.GetHead();
                             var Tail = AsmLine.Links.GetTail();
 
+                            AsmInFo CurrentInFo = null;
+                            if (Head.InFo != null)
+                            {
+                                CurrentInFo = Head.InFo;
+                            }
+
                             switch (AsmLine.OPCode)
                             {
+                                case "iadd":
+                                    {
+                                        string GetVariableName = Head.GetValue();
+
+                                        if (TrackerRef.Variables.IsCreated(GetVariableName))
+                                        {
+                                            TrackerRef.Variables.SetType(GetVariableName, AsmVariableType.Int);
+                                        }
+                                        else
+                                        {
+                                            TrackerRef.Variables.Add(new AsmOffset(i,0),GetVariableName,0,new List<AsmLink>() { Head.Next },VariableAccess.Set);
+                                            TrackerRef.Variables.SetType(GetVariableName, AsmVariableType.Int);
+                                        }
+
+                                        //Test
+                                        if (Head.Next == null)
+                                        {
+                                            AsmLine.PSCCode = Head.GetValue() + " += 1";
+                                        }
+                                        else
+                                        {
+                                            AsmLine.PSCCode = Head.GetValue() + " = " + Head.Next.GetValue() + " += 1";
+                                        }
+                                        
+                                    }
+                                    break;
                                 case "assign":
                                     {
                                         string GetVariableName = Head.GetValue();
                                         TrackerRef.Variables.Add(new AsmOffset(i, 0), GetVariableName, 0, null, VariableAccess.None);
-                                        if (Head.InFo != null)
-                                        { 
-                                        }
+                                        
                                     }
                                     break;
                                 case "callmethod":
@@ -84,7 +115,7 @@ namespace PexInterface
                                                 State++;
                                             }
                                         }));
-                                        var GetFunctionName = AsmLine.Links.GetHead().GetValue();
+                                        var GetFunctionName = Head.GetValue();
                                         TrackerRef.Variables.Add(new AsmOffset(i, 0), GetFunctionName, State, null, VariableAccess.None);
 
                                         if (State == 3)
@@ -93,6 +124,16 @@ namespace PexInterface
 
                                             //Test
                                             AsmLine.PSCCode = GetVariableName + " = " + Tail.Prev.GetValue() + "." + GetFunctionName + "();";
+
+                                            if (Tail.Prev.InFo != null)
+                                            {
+                                                if (Tail.Prev.InFo.Variable != null)
+                                                {
+                                                    var GetName = TempStrings[Tail.Prev.InFo.Variable.NameIndex];
+                                                    var GetType = TempStrings[Tail.Prev.InFo.Variable.TypeNameIndex];
+                                                }
+                                               
+                                            }
 
                                             TrackerRef.Variables.Add(new AsmOffset(i, 2), GetVariableName, State, new List<AsmLink>() {
                                                 Tail.Prev,
