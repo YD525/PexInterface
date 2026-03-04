@@ -73,46 +73,25 @@ namespace PexInterface
                         }
                     }
                     else
-                    if (Track is TFunction)
+                    if (Track is AsmCall)
                     {
-                        var Function = (TFunction)Track;
-                        if (Function.Params.Count > 0)
+                        var Function = (AsmCall)Track;
+                        if (Function.Links.HaveValue())
                         {
-                            foreach (var GetVariable in Function.Params)
+                            if (Function.OPCode.Equals("callmethod"))
                             {
-                                var Get = TrackerRef.QueryMethodVariable(GetVariable);
-                                if (Get == "" && GetVariable.Length > 0)
+                                Function.Links.ForEachForward(new Action<AsmLink>((LinkItem) =>
                                 {
-                                    var GlobalVariable = ParentCls.QueryGlobalVariable(GetVariable);
-                                    if (GlobalVariable == null)
-                                    {
-                                        var AutoVariable = ParentCls.QueryAutoGlobalVariable(GetVariable);
-
-                                        if (AutoVariable == null)
-                                        {
-                                            TempVariables.Add(new TempVariable(GetVariable, i));
-                                        }
-                                        else
-                                        {
-
-                                        }
-                                    }
-                                    else
-                                    {
-
-                                    }
-                                }
-                                else
-                                {
-                                    foreach (var GetTempVar in TempVariables)
-                                    {
-                                        if (GetTempVar.Variable.Equals(Get))
-                                        { 
+                                    if (LinkItem.Value.StartsWith("::"))
+                                    { 
                                         
-                                        }
                                     }
-                                }
+                                }));
                             }
+                        }
+                        else
+                        { 
+                        
                         }
                     }
                     else

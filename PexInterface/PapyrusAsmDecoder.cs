@@ -4,6 +4,8 @@ using PexInterface;
 using System.Linq;
 using static PexInterface.PexReader;
 using System.Reflection.Emit;
+using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -333,7 +335,7 @@ public class PapyrusAsmDecoder
                         }
 
                         CurrentLine = CurrentLine.Trim();
-                        FunctionCode += CurrentLine + "\n";
+                        FunctionCode += GetOPName + " " + CurrentLine + "\n";
                         Tracker.CheckCode(LineIndex, GetOPName,CurrentLine);
                         LineIndex++;
                     }
@@ -470,6 +472,122 @@ public class CastLink
     }
 }
 
+
+public class AsmLink
+{
+    public string Value = null;
+    public AsmLink Next = null;
+    public AsmLink Prev = null;   
+    private AsmLink Tail = null;
+
+    public bool HaveValue()
+    {
+        if (Tail != null)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    public void SetValue(string value)
+    {
+        if (Value == null)
+        {
+            Value = value;
+            Tail = this;
+        }
+        else
+        {
+            var NewNode = new AsmLink { Value = value, Prev = Tail };
+            Tail.Next = NewNode;
+            Tail = NewNode;
+        }
+    }
+
+    public string GetValue(int Index)
+    {
+        var Node = this;
+        int i = 0;
+        while (Node != null)
+        {
+            if (i == Index)
+                return Node.Value;
+            Node = Node.Next;
+            i++;
+        }
+        return null;
+    }
+
+    public string GetValueFromTail(int IndexFromTail)
+    {
+        var Node = Tail;
+        int i = 0;
+        while (Node != null)
+        {
+            if (i == IndexFromTail)
+            {
+                return Node.Value;
+            } 
+            Node = Node.Prev;
+            i++;
+        }
+        return null;
+    }
+    public int Count()
+    {
+        int Count = 0;
+        var Node = this;
+        while (Node != null)
+        {
+            Count++;
+            Node = Node.Next;
+        }
+        return Count;
+    }
+    public void ForEachForward(Action<AsmLink> Action)
+    {
+        var Node = this;
+        while (Node != null)
+        {
+            Action(Node);
+            Node = Node.Next;
+        }
+    }
+    public void ForEachBackward(Action<AsmLink> Action)
+    {
+        var Node = Tail;
+        while (Node != null)
+        {
+            Action(Node);
+            Node = Node.Prev;
+        }
+    }
+}
+public class AsmBase
+{
+    public string OPCode = "";
+    public string AsmCode = "";
+    public AsmLink Links = new AsmLink();
+    public void ParseLink(string Str)
+    {
+        var Tokens = new List<string>();
+
+        var Matches = Regex.Matches(Str, @"(::\w+)|(""[^""]*"")|(\S+)");
+
+        foreach (Match m in Matches)
+        {
+            Tokens.Add(m.Value);
+        }
+
+        Tokens.Reverse();
+
+        foreach (var Token in Tokens)
+        {
+            this.Links.SetValue(Token);
+        }
+    }
+}
+
 public class TProp
 {
     public int LineIndex = 0;
@@ -482,17 +600,21 @@ public class TProp
     public bool Self = false;
 }
 
-public class TFunction
+public class AsmCall:AsmBase
 {
     public int LineIndex = 0;
+    public string Call = "";
 
-    public List<string> Fronts = new List<string>();
-    public string FunctionName = "";
-    public List<string> Params = new List<string>();
+    public void Parse(string Line)
+    {
+        if (Line.Contains(" "))
+        {
+            this.Call = Line.Split(' ')[0];
+            this.ParseLink(Line.Split(' ')[1]);
+        }
 
-    public bool Self = false;
-
-    public string LinkVariable = "";
+        this.ParseLink(Line);
+    }
 }
 
 public class TStrcat
@@ -588,7 +710,7 @@ public class DecompileTracker
     public Dictionary<int, AssemblyLine> Tracks = new Dictionary<int, AssemblyLine>();
 
     public List<TVariable> _PexVariables = new List<TVariable>();
-    public List<TFunction> _PexFunctions = new List<TFunction>();
+    public List<AsmCall> AsmCalls = new List<AsmCall>();
     public List<CastLink> _CastLinks = new List<CastLink>();
     public List<TProp> _Props = new List<TProp>();
     public List<TStrcat> _StrMerges = new List<TStrcat>();
@@ -675,151 +797,15 @@ public class DecompileTracker
         else
         if (OPCode == "callmethod" || OPCode == "callparent" || OPCode == "callstatic")
         {
-            TFunction NTFunction = new TFunction();
+            AsmCall NTFunction = new AsmCall();
             NTFunction.LineIndex = LineIndex;
+            NTFunction.OPCode = OPCode;
+            NTFunction.AsmCode = OPCode + " " + Line;
+            NTFunction.Call = Line.Split(' ')[0].Trim();
+            NTFunction.Parse(Line);
 
-            bool NoParams = false;
-
-            string FristValue = "";
-
-            List<string> AParams = new List<string>();
-
-            if (GetParams.Count >= 2)
-            {
-                GetParams[1] = GetParams[1].Trim();
-
-                bool Nonevar = false;
-                if (GetParams[1].Contains(" "))
-                {
-                    var GetStaticValue = GetParams[1].Split(' ');
-
-                    for (int i = 0; i < GetStaticValue.Length; i++)
-                    {
-                        if (GetStaticValue[i] == "nonevar")
-                        {
-                            Nonevar = true;
-                        }
-                        else
-                        if (GetStaticValue[i].Trim().Length > 0)
-                        {
-                            AParams.Add(GetStaticValue[i]);
-                        }
-                    }
-                }
-                if (Nonevar)
-                {
-                    GetParams[1] = "nonevar";
-                }
-                if (GetParams[1] == "nonevar")
-                {
-                    NoParams = true;
-                }
-            }
-
-            if (GetParams.Count > 0)
-            {
-                FristValue = GetParams[0].Trim();
-            }
-
-            if (GetParams.Count > 2)
-            {
-                for (int i = 2; i < GetParams.Count; i++)
-                {
-                    GetParams[i] = GetParams[i].Trim();
-
-                    if (GetParams[i].Contains(" "))
-                    {
-                        foreach (var Get in GetParams[i].Split(' '))
-                        {
-                            if (Get.Trim().Length > 0)
-                            {
-                                AParams.Add(Get);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        AParams.Add(GetParams[i]);
-                    }
-                }
-            }
-
-            var NextParams = FristValue.Split(' ');
-            List<string> Fronts = new List<string>();
-            List<string> Params = new List<string>();
-
-            if (AParams.Count > 0)
-            {
-                Params.AddRange(AParams);
-            }
-
-            if (FristValue.Contains(" "))
-            {
-                for (int i = 1; i < NextParams.Length; i++)
-                {
-                    if (NextParams[i] != "self")
-                    {
-                        Fronts.Add(NextParams[i]);
-                    }
-                }
-            }
-
-            if (NoParams)
-            {
-                if (NextParams.Length >= 2)
-                {
-                    if (NextParams[1].Equals("self"))
-                    {
-                        NTFunction.Self = true;
-                        NTFunction.FunctionName = NextParams[0];
-
-                        NTFunction.Fronts = Fronts;
-                        NTFunction.Params = Params;
-
-                        _PexFunctions.Add(NTFunction);
-                        Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
-                    }
-                }
-                else
-                if (NextParams.Length > 0)
-                {
-                    NTFunction.FunctionName = NextParams[0];
-
-                    NTFunction.Fronts = Fronts;
-                    NTFunction.Params = Params;
-
-                    _PexFunctions.Add(NTFunction);
-                    Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
-                }
-            }
-            else
-            {
-                if (NextParams.Length >= 2)
-                {
-                    if (NextParams[1].Equals("self"))
-                    {
-                        NTFunction.Self = true;
-                        NTFunction.FunctionName = NextParams[0];
-
-                        NTFunction.Fronts = Fronts;
-                        NTFunction.Params = Params;
-
-                        _PexFunctions.Add(NTFunction);
-                        Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
-                    }
-                }
-                else
-                if (NextParams.Length > 0)
-                {
-                    NTFunction.FunctionName = NextParams[0];
-
-                    NTFunction.Fronts = Fronts;
-                    NTFunction.Params = Params;
-
-                    _PexFunctions.Add(NTFunction);
-                    Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
-                }
-            }
+            AsmCalls.Add(NTFunction);
+            Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
         }
         else
         if (OPCode == "assign")
