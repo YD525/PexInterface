@@ -6,6 +6,7 @@ using static PexInterface.PexReader;
 using System.Reflection.Emit;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
+using System.Diagnostics.SymbolStore;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -343,7 +344,7 @@ public class PapyrusAsmDecoder
                     NFunctionBlock.FunctionCode = FunctionCode;
                     NFunctionBlock.TracksRef = Tracker.Tracks;
 
-                    AsmExtend.DeFunctionCode(ParentCls, NFunctionBlock, Tracker, CanSkipPscDeCode);
+                    AsmExtend.DeFunctionCode(CodeGenStyle.CSharp,ParentCls, NFunctionBlock, Tracker, CanSkipPscDeCode);
 
                     FunctionBlocks.Add(NFunctionBlock);
                 }
@@ -493,19 +494,30 @@ public class AsmLink
         }
         return SetValue;
     }
+
+  
     public bool IsVar()
     {
-        if (this.Value == null)
-        {
-            return false;
-        }
-        else
-        if (this.Value == string.Empty)
+        if (IsNull())
         {
             return false;
         }
         else
         if (this.Value.EndsWith("_var"))
+        {
+            return true;
+        }
+
+        return false;
+    }
+    public bool IsSelf()
+    {
+        if (IsNull())
+        {
+            return false;
+        }
+        else
+        if (this.Value.Trim().ToLower().Equals("self"))
         {
             return true;
         }

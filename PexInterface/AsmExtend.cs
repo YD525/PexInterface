@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -22,7 +23,7 @@ namespace PexInterface
         }
 
    
-        public static void DeFunctionCode(PscCls ParentCls,FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
+        public static void DeFunctionCode(CodeGenStyle Style,PscCls ParentCls,FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
         {
             if (Func.FunctionName == "OnMenuOpenST")
             {
@@ -82,6 +83,7 @@ namespace PexInterface
 
                         //callmethod SetMenuDialogStartIndex self::nonevar ::temp269
                         //Self.SetMenuDialogStartIndex(ActorsListIndex[iSelect]) ; 
+                        //SetMenuDialogStartIndex(temp269);
 
                         string PscCode = "";
                         var Function = (AsmCall)Track;
@@ -90,32 +92,68 @@ namespace PexInterface
                             if (Function.OPCode.Equals("callmethod"))
                             {
                                 int Index = 0;
+                                bool Self = false;
+                                string Params = "";
 
                                 Function.Links.ForEachForward(new Action<AsmLink>((LinkItem) =>
                                 {
                                     if (LinkItem.Value.StartsWith("::"))
                                     {
-                                        if (!LinkItem.IsNull())
+                                        if (!Self)
                                         {
-                                            if (!LinkItem.IsVar())
+                                            if (!LinkItem.IsNull())
                                             {
-                                                PscCode = Function.Call + "." + LinkItem.GetValue() + "()";
-                                            }
-                                            else
-                                            {
-                                                PscCode = LinkItem.GetValue() + "." + Function.Call + "()";
-                                            }
+                                                if (!LinkItem.IsVar())
+                                                {
+                                                    PscCode = Function.Call + "." + LinkItem.GetValue() + "()";
+                                                }
+                                                else
+                                                {
+                                                    PscCode = LinkItem.GetValue() + "." + Function.Call + "()";
+                                                }
 
-                                            if ((LinkItem.Prev!=null&&!LinkItem.Prev.IsNull())&& PscCode.Length > 0)
-                                            {
-                                                PscCode = LinkItem.Value + "&" + PscCode;
+                                                if ((LinkItem.Prev != null && !LinkItem.Prev.IsNull()) && PscCode.Length > 0)
+                                                {
+                                                    PscCode = LinkItem.Value + "&" + PscCode;
+                                                }
+
+                                                if (Style == CodeGenStyle.CSharp)
+                                                {
+                                                    PscCode += ";";
+                                                }
                                             }
                                         }
-                                       
+                                        else
+                                        {
+                                            if (!LinkItem.IsNull())
+                                            {
+                                                Params += LinkItem.GetValue() + ",";
+                                            }
+                                        }
+                                    }
+
+                                    if (LinkItem.IsSelf())
+                                    {
+                                        Self = true;
                                     }
 
                                     Index++;
                                 }));
+
+                                if (Params.Length > 0)
+                                {
+                                    if (Params.EndsWith(","))
+                                    {
+                                        Params = Params.Substring(0, Params.Length - ",".Length);
+                                    }
+
+                                    PscCode = Function.Call + "(" + Params + ")";
+
+                                    if (Style == CodeGenStyle.CSharp)
+                                    {
+                                        PscCode += ";";
+                                    }
+                                }
 
                                 Function.PSCCode = PscCode;
                             }
