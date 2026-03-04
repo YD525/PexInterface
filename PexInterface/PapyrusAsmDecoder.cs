@@ -448,7 +448,7 @@ public class CastLink
     public int LineIndex = 0;
 
     public List<string> Links = new List<string>();
-
+  
     public void AddLinks(List<string> SetLinks)
     {
         foreach (var GetLink in SetLinks)
@@ -480,6 +480,56 @@ public class AsmLink
     public AsmLink Prev = null;   
     private AsmLink Tail = null;
 
+    public string GetValue()
+    {
+        string SetValue = Value.Trim();
+        if (SetValue.StartsWith("::"))
+        { 
+           SetValue = SetValue.Substring("::".Length);
+        }
+        if (SetValue.EndsWith("_var"))
+        {
+            SetValue = SetValue.Substring(0, SetValue.Length - "_var".Length);
+        }
+        return SetValue;
+    }
+    public bool IsVar()
+    {
+        if (this.Value == null)
+        {
+            return false;
+        }
+        else
+        if (this.Value == string.Empty)
+        {
+            return false;
+        }
+        else
+        if (this.Value.EndsWith("_var"))
+        {
+            return true;
+        }
+
+        return false;
+    }
+    public bool IsNull()
+    {
+        if (this.Value == null)
+        {
+            return true;
+        }
+        else
+        if (this.Value == string.Empty)
+        {
+            return true;
+        }
+        else
+        if (this.Value == "::nonevar" || this.Value == "nonevar")
+        {
+            return true;
+        }
+        return false;
+    }
     public bool HaveValue()
     {
         if (Tail != null)
@@ -549,7 +599,9 @@ public class AsmLink
         var Node = this;
         while (Node != null)
         {
+            if (Node != null)
             Action(Node);
+
             Node = Node.Next;
         }
     }
@@ -558,7 +610,9 @@ public class AsmLink
         var Node = Tail;
         while (Node != null)
         {
+            if (Node != null)
             Action(Node);
+
             Node = Node.Prev;
         }
     }
@@ -567,7 +621,10 @@ public class AsmBase
 {
     public string OPCode = "";
     public string AsmCode = "";
+    public string PSCCode = "";
+    public int LineIndex = 0;
     public AsmLink Links = new AsmLink();
+
     public void ParseLink(string Str)
     {
         var Tokens = new List<string>();
@@ -602,7 +659,6 @@ public class TProp
 
 public class AsmCall:AsmBase
 {
-    public int LineIndex = 0;
     public string Call = "";
 
     public void Parse(string Line)

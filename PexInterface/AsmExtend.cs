@@ -75,18 +75,49 @@ namespace PexInterface
                     else
                     if (Track is AsmCall)
                     {
+
+                        //callmethod GetSize ::aaa_RDOPreventedActorsList_var ::temp269
+
+                        //While iSelect<aaa_RDOPreventedActorsList.GetSize() ;
+
+                        //callmethod SetMenuDialogStartIndex self::nonevar ::temp269
+                        //Self.SetMenuDialogStartIndex(ActorsListIndex[iSelect]) ; 
+
+                        string PscCode = "";
                         var Function = (AsmCall)Track;
                         if (Function.Links.HaveValue())
                         {
                             if (Function.OPCode.Equals("callmethod"))
                             {
+                                int Index = 0;
+
                                 Function.Links.ForEachForward(new Action<AsmLink>((LinkItem) =>
                                 {
                                     if (LinkItem.Value.StartsWith("::"))
-                                    { 
-                                        
+                                    {
+                                        if (!LinkItem.IsNull())
+                                        {
+                                            if (!LinkItem.IsVar())
+                                            {
+                                                PscCode = Function.Call + "." + LinkItem.GetValue() + "()";
+                                            }
+                                            else
+                                            {
+                                                PscCode = LinkItem.GetValue() + "." + Function.Call + "()";
+                                            }
+
+                                            if ((LinkItem.Prev!=null&&!LinkItem.Prev.IsNull())&& PscCode.Length > 0)
+                                            {
+                                                PscCode = LinkItem.Value + "&" + PscCode;
+                                            }
+                                        }
+                                       
                                     }
+
+                                    Index++;
                                 }));
+
+                                Function.PSCCode = PscCode;
                             }
                         }
                         else
