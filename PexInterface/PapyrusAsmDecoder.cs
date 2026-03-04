@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Diagnostics.SymbolStore;
 using Microsoft.SqlServer.Server;
+using System.Xml.Linq;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -338,7 +339,7 @@ public class PapyrusAsmDecoder
 
                         CurrentLine = CurrentLine.Trim();
                         FunctionCode += GetOPName + " " + CurrentLine + "\n";
-                        Tracker.CheckCode(GetOPName,CurrentLine);
+                        Tracker.CheckCode(LineIndex,GetOPName,CurrentLine);
                         LineIndex++;
                     }
 
@@ -804,6 +805,95 @@ public class AsmLink
         }
     }
 }
+
+
+[Flags]
+public enum VariableAccess
+{
+    None = 0,        
+    Created = 1 << 0,   
+    Get = 1 << 1,
+    Set = 1 << 2
+}
+
+public class AsmOffset
+{
+    public int LineIndex = 0;
+    public int Offset = 0;
+
+    public AsmOffset(int LineIndex, int Offset)
+    {
+        this.LineIndex = LineIndex;
+        this.Offset = Offset;
+    }
+}
+
+public class AsmAction
+{
+    public VariableAccess Access;
+    public AsmLink Link;
+    public AsmAction(VariableAccess Access, AsmLink Link)
+    {
+        this.Access = Access;
+        this.Link = Link;
+    }
+}
+public class AsmVariable
+{
+    public string Name = null;
+    public bool IsTemp = false;
+    public Dictionary<AsmOffset, AsmAction> Actions = new Dictionary<AsmOffset, AsmAction>();
+    public AsmLink Link = null;
+    public static bool CheckTemp(string Variable)
+    {
+        Variable = Variable.Trim();
+
+        if (Regex.IsMatch(Variable, @"^temp\d+$"))
+        {
+           return true;
+        }
+
+        return false;
+    }
+}
+public class VariableTracker
+{
+    private Dictionary<string,AsmVariable> _Variables = new Dictionary<string,AsmVariable>();
+    public bool IsCreated(string Variable)
+    {
+        Variable = Variable.Trim();
+        return _Variables.ContainsKey(Variable);
+    }
+    public void Add(AsmOffset Offset,AsmLink Link,string Variable,VariableAccess Access)
+    {
+        if (IsCreated(Variable))
+        {
+            if (_Variables[Variable].Actions.ContainsKey(Offset))
+            {
+                _Variables[Variable].Actions[Offset] = new AsmAction(Access,Link);
+            }
+            else
+            {
+                _Variables[Variable].Actions.Add(Offset, new AsmAction(Access,Link));
+            }
+        }
+        else
+        {
+            AsmVariable Var = new AsmVariable();
+            Var.Name = Variable;
+
+            if (AsmVariable.CheckTemp(Variable))
+            {
+                Var.IsTemp = true;
+            }
+
+            Var.Actions.Add(Offset,new AsmAction(VariableAccess.Created|Access,Link));
+
+            this._Variables.Add(Variable, Var);
+        }
+    }
+}
+
 public class AsmBase
 {
     public string OPCode = "";
@@ -814,58 +904,19 @@ public class AsmBase
 
     protected void ParseLink(string Str)
     {
-        AsmLink.ParseLink(ref Links,Str);
+        AsmLink.ParseLink(ref Links, Str);
     }
 }
-
-public class AsmVariable
-{
-    public string Name = null;
-    public bool IsTemp = false;
-    public int StartIndex = 0;
-    public AsmVariable(string Variable)
-    {
-        Variable = Variable.Trim();
-
-        if (Regex.IsMatch(Variable, @"^temp\d+$"))
-        {
-            IsTemp = true;
-        }
-
-        this.Name = Variable;
-    }
-}
-public class VariableTracker
-{
-    public List<AsmVariable> Variables = new List<AsmVariable>();
-}
-
 public class AsmCode:AsmBase
 {
-    public string Param = "";
-    public string VariableLink = "";
-
+    public AsmCode(int LineIndex)
+    { 
+       this.LineIndex = LineIndex;
+    }
     public void Parse(string OPCode, string Line)
     {
         this.OPCode = OPCode.Trim().ToLower();
-
-        if (Line.Contains(" "))
-        {
-            this.Param = Line.Split(' ')[0].Trim();
-            string GetLinkStr = Line.Split(' ')[1].Trim();
-
-            if (GetLinkStr.Length > 0)
-            {
-                this.ParseLink(GetLinkStr);
-            }
-        }
-        else
-        {
-            if (Line.Length > 0)
-            {
-                this.ParseLink(Line.Trim());
-            }
-        }
+        this.ParseLink(Line.Trim());
     }
 
     public string GetAsmCode()
@@ -874,18 +925,15 @@ public class AsmCode:AsmBase
             new[]
             {
                 this.OPCode,
-                this.Param,
                 this.Links?.GetAsmCode()
             }
             .Where(Str => !string.IsNullOrWhiteSpace(Str))
         );
     }
-
     public string GetCode()
     {
         return this.PSCCode;
     }
-
     public string GetNote()
     {
         return "//" + GetAsmCode();
@@ -908,14 +956,12 @@ public class AsmCode:AsmBase
   
 }
 
-
-
 public class DecompileTracker
 {
     public List<AsmCode> Lines = new List<AsmCode>();
-    public void CheckCode(string OPCode,string Line)
+    public void CheckCode(int LineIndex,string OPCode,string Line)
     {
-        AsmCode NewLine = new AsmCode();
+        AsmCode NewLine = new AsmCode(LineIndex);
         NewLine.Parse(OPCode,Line);
         Lines.Add(NewLine);
 
