@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Diagnostics.SymbolStore;
 using Microsoft.SqlServer.Server;
 using System.Xml.Linq;
+using System.Runtime.CompilerServices;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -831,19 +832,34 @@ public class AsmOffset
 public class AsmAction
 {
     public VariableAccess Access;
-    public AsmLink Link;
-    public AsmAction(VariableAccess Access, AsmLink Link)
+    public List<AsmLink> Links;
+    public AsmAction(VariableAccess Access,List<AsmLink> Links)
     {
         this.Access = Access;
-        this.Link = Link;
+        this.Links = Links;
     }
+}
+
+public enum AsmVariableType
+{
+    Null = 0,  
+    Int,         
+    Float,       
+    Double,     
+    String,       
+    Bool,       
+    Char,         
+    Object,      
+    Array,
+    Function,
+    Pointer
 }
 public class AsmVariable
 {
     public string Name = null;
+    public AsmVariableType Type = AsmVariableType.Null;
     public bool IsTemp = false;
-    public Dictionary<AsmOffset, AsmAction> Actions = new Dictionary<AsmOffset, AsmAction>();
-    public AsmLink Link = null;
+    public Dictionary<AsmOffset, AsmAction> Actions = null;
     public static bool CheckTemp(string Variable)
     {
         Variable = Variable.Trim();
@@ -855,6 +871,18 @@ public class AsmVariable
 
         return false;
     }
+    public void SetType(AsmVariableType Type)
+    {
+        this.Type = Type;
+    }
+    public bool IsFunction()
+    {
+        if (this.Type == AsmVariableType.Function)
+        {
+            return true;
+        }
+        return false;
+    }
 }
 public class VariableTracker
 {
@@ -864,22 +892,23 @@ public class VariableTracker
         Variable = Variable.Trim();
         return _Variables.ContainsKey(Variable);
     }
-    public void Add(AsmOffset Offset,AsmLink Link,string Variable,VariableAccess Access)
+    public void Add(AsmOffset Offset, List<AsmLink> Links,string Variable,VariableAccess Access)
     {
         if (IsCreated(Variable))
         {
             if (_Variables[Variable].Actions.ContainsKey(Offset))
             {
-                _Variables[Variable].Actions[Offset] = new AsmAction(Access,Link);
+                _Variables[Variable].Actions[Offset] = new AsmAction(Access,Links);
             }
             else
             {
-                _Variables[Variable].Actions.Add(Offset, new AsmAction(Access,Link));
+                _Variables[Variable].Actions.Add(Offset, new AsmAction(Access,Links));
             }
         }
         else
         {
             AsmVariable Var = new AsmVariable();
+            Var.Actions = new Dictionary<AsmOffset, AsmAction>();
             Var.Name = Variable;
 
             if (AsmVariable.CheckTemp(Variable))
@@ -887,10 +916,14 @@ public class VariableTracker
                 Var.IsTemp = true;
             }
 
-            Var.Actions.Add(Offset,new AsmAction(VariableAccess.Created|Access,Link));
+            Var.Actions.Add(Offset,new AsmAction(VariableAccess.Created|Access,Links));
 
             this._Variables.Add(Variable, Var);
         }
+    }
+    public void SetType(string Variable, AsmVariableType Type)
+    {
+        _Variables[Variable].Type = Type;
     }
 }
 
