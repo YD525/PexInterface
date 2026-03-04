@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("Pexinterface.UnitTests")]
+[assembly: AssemblyTitle("PEXInterfaceUnitTest")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("Pexinterface.UnitTests")]
+[assembly: AssemblyProduct("PEXInterfaceUnitTest")]
 [assembly: AssemblyCopyright("Copyright ©  2026")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
@@ -20,7 +20,7 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[assembly: Guid("c70ec36d-33b7-459b-9d27-04dcbfb6bba9")]
+[assembly: Guid("a8fbfca1-3984-4a00-8701-9a3a973659d4")]
 
 // Version information for an assembly consists of the following four values:
 //

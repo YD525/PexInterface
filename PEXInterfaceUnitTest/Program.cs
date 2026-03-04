@@ -1,8 +1,9 @@
 ﻿using System;
+using PexInterface;
 
-namespace PexInterface.UnitTests
+namespace PEXInterfaceUnitTest
 {
-    public class Program
+    internal class Program
     {
         public static PexReader Reader = new PexReader();
         public static void LoadPex(string PexPath)
@@ -15,7 +16,7 @@ namespace PexInterface.UnitTests
         {
             LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\rdo_mcmconfig.pex");
             foreach (var Get in Reader.StringTable)
-            { 
+            {
                 //...
             }
         }

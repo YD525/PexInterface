@@ -244,6 +244,11 @@ public class PapyrusAsmDecoder
                     NFunctionBlock.FunctionName = Item.Value;
                     NFunctionBlock.ReturnType = ReturnType;
 
+                    if (Item.Value == "OnMenuOpenST")
+                    { 
+                    
+                    }
+
                     List<LocalVariable> LocalVariables = new List<LocalVariable>();
 
                     for (int ir = 0; ir < GetFunc1st.NumParams; ir++)
@@ -264,6 +269,7 @@ public class PapyrusAsmDecoder
 
                     NFunctionBlock.Params = LocalVariables;
 
+                    string FunctionCode = "";
                     int LineIndex = 0;
                     DecompileTracker Tracker = new DecompileTracker(Item.Value);
 
@@ -313,12 +319,6 @@ public class PapyrusAsmDecoder
 
                                     ObjType VariableType = ObjType.Null;
                                     var GetVariableTypes = QueryAnyByID(GetObj.Index, ref VariableType);
-                                    var NextGet = TempStrings[GetObj.Index];
-
-                                    if (GetValue.Equals("NextIndex"))
-                                    {
-
-                                    }
                                 }
 
                                 if (GetArg.Type == 2)
@@ -333,13 +333,15 @@ public class PapyrusAsmDecoder
                         }
 
                         CurrentLine = CurrentLine.Trim();
+                        FunctionCode += CurrentLine + "\n";
                         Tracker.CheckCode(LineIndex, GetOPName,CurrentLine);
                         LineIndex++;
                     }
 
-                    AsmExtend.DeFunctionCode(NFunctionBlock, Tracker, CanSkipPscDeCode);
-
+                    NFunctionBlock.FunctionCode = FunctionCode;
                     NFunctionBlock.TracksRef = Tracker.Tracks;
+
+                    AsmExtend.DeFunctionCode(NFunctionBlock, Tracker, CanSkipPscDeCode);
 
                     FunctionBlocks.Add(NFunctionBlock);
                 }
@@ -399,6 +401,8 @@ public class FunctionBlock
     public string FunctionName = "";
     public List<LocalVariable> Params = new List<LocalVariable>();
     public string ReturnType = "";
+
+    public string FunctionCode = "";
 
     public int StartIndex = 0;
 
@@ -520,7 +524,7 @@ public class TValIncrease
     public string Variable = "";
     public string Increase = "";
 }
-public class VariableSetter
+public class TVariableSetter
 {
     public int LineIndex = 0;
 
@@ -569,7 +573,7 @@ public class DecompileTracker
     public List<TValIncrease> _TIncreases =new List<TValIncrease>();
     public List<TReturn> _Returns = new List<TReturn>();
     public List<TArrayOP> _Arrays = new List<TArrayOP>();
-    public List<VariableSetter> _VariableSetters = new List<VariableSetter>();
+    public List<TVariableSetter> _VariableSetters = new List<TVariableSetter>();
 
     public string QueryVariables(string TempName)
     {
@@ -810,7 +814,7 @@ public class DecompileTracker
             {
                 if (Line.Split(' ').Length == 2)
                 {
-                    VariableSetter NVariableSetter = new VariableSetter();
+                    TVariableSetter NVariableSetter = new TVariableSetter();
                     NVariableSetter.LineIndex = LineIndex;
                     NVariableSetter.Parent = Line.Split(' ')[0];
                     NVariableSetter.Child = Line.Split(' ')[1];
