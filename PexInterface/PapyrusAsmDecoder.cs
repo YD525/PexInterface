@@ -479,7 +479,7 @@ public class AsmLink
     public string Value = null;
     public AsmLink Next = null;
     public AsmLink Prev = null;   
-    private AsmLink Tail = null;
+    public AsmLink Tail = null;
 
     public string GetValue()
     {
@@ -495,7 +495,20 @@ public class AsmLink
         return SetValue;
     }
 
-  
+
+    public bool IsTemp()
+    {
+        if (IsNull())
+        {
+            return false;
+        }
+        else
+        if (this.Value.Trim().StartsWith("::temp"))
+        {
+            return true;
+        }
+        return false;
+    }
     public bool IsVar()
     {
         if (IsNull())
@@ -503,7 +516,7 @@ public class AsmLink
             return false;
         }
         else
-        if (this.Value.EndsWith("_var"))
+        if (this.Value.Trim().EndsWith("_var"))
         {
             return true;
         }
@@ -672,6 +685,7 @@ public class TProp
 public class AsmCall:AsmBase
 {
     public string Call = "";
+    public string VariableLink = "";
 
     public void Parse(string Line)
     {
@@ -682,6 +696,11 @@ public class AsmCall:AsmBase
         }
 
         this.ParseLink(Line);
+
+        if (this.Links.Tail.IsTemp())
+        {
+            this.VariableLink = this.Links.Tail.GetValue();
+        }
     }
 }
 

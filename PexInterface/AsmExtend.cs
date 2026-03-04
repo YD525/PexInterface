@@ -91,71 +91,71 @@ namespace PexInterface
                         {
                             if (Function.OPCode.Equals("callmethod"))
                             {
-                                int Index = 0;
-                                bool Self = false;
-                                string Params = "";
+                                //int Index = 0;
+                                //bool Self = false;
+                                //string Params = "";
 
-                                Function.Links.ForEachForward(new Action<AsmLink>((LinkItem) =>
-                                {
-                                    if (LinkItem.Value.StartsWith("::"))
-                                    {
-                                        if (!Self)
-                                        {
-                                            if (!LinkItem.IsNull())
-                                            {
-                                                if (!LinkItem.IsVar())
-                                                {
-                                                    PscCode = Function.Call + "." + LinkItem.GetValue() + "()";
-                                                }
-                                                else
-                                                {
-                                                    PscCode = LinkItem.GetValue() + "." + Function.Call + "()";
-                                                }
+                                //Function.Links.ForEachForward(new Action<AsmLink>((LinkItem) =>
+                                //{
+                                //    if (LinkItem.Value.StartsWith("::"))
+                                //    {
+                                //        if (!Self)
+                                //        {
+                                //            if (!LinkItem.IsNull())
+                                //            {
+                                //                if (!LinkItem.IsVar())
+                                //                {
+                                //                    PscCode = Function.Call + "." + LinkItem.GetValue() + "()";
+                                //                }
+                                //                else
+                                //                {
+                                //                    PscCode = LinkItem.GetValue() + "." + Function.Call + "()";
+                                //                }
 
-                                                if ((LinkItem.Prev != null && !LinkItem.Prev.IsNull()) && PscCode.Length > 0)
-                                                {
-                                                    PscCode = LinkItem.Value + "&" + PscCode;
-                                                }
+                                //                if ((LinkItem.Prev != null && !LinkItem.Prev.IsNull()) && PscCode.Length > 0)
+                                //                {
+                                //                    PscCode = LinkItem.Value + "&" + PscCode;
+                                //                }
 
-                                                if (Style == CodeGenStyle.CSharp)
-                                                {
-                                                    PscCode += ";";
-                                                }
-                                            }
-                                        }
-                                        else
-                                        {
-                                            if (!LinkItem.IsNull())
-                                            {
-                                                Params += LinkItem.GetValue() + ",";
-                                            }
-                                        }
-                                    }
+                                //                if (Style == CodeGenStyle.CSharp)
+                                //                {
+                                //                    PscCode += ";";
+                                //                }
+                                //            }
+                                //        }
+                                //        else
+                                //        {
+                                //            if (!LinkItem.IsNull())
+                                //            {
+                                //                Params += LinkItem.GetValue() + ",";
+                                //            }
+                                //        }
+                                //    }
 
-                                    if (LinkItem.IsSelf())
-                                    {
-                                        Self = true;
-                                    }
+                                //    if (LinkItem.IsSelf())
+                                //    {
+                                //        Self = true;
+                                //    }
 
-                                    Index++;
-                                }));
+                                //    Index++;
+                                //}));
 
-                                if (Params.Length > 0)
-                                {
-                                    if (Params.EndsWith(","))
-                                    {
-                                        Params = Params.Substring(0, Params.Length - ",".Length);
-                                    }
+                                //if (Params.Length > 0)
+                                //{
+                                //    if (Params.EndsWith(","))
+                                //    {
+                                //        Params = Params.Substring(0, Params.Length - ",".Length);
+                                //    }
 
-                                    PscCode = Function.Call + "(" + Params + ")";
+                                //    PscCode = Function.Call + "(" + Params + ")";
 
-                                    if (Style == CodeGenStyle.CSharp)
-                                    {
-                                        PscCode += ";";
-                                    }
-                                }
+                                //    if (Style == CodeGenStyle.CSharp)
+                                //    {
+                                //        PscCode += ";";
+                                //    }
+                                //}
 
-                                Function.PSCCode = PscCode;
+                                //Function.PSCCode = PscCode;
                             }
                         }
                         else
