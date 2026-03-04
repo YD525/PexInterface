@@ -381,7 +381,7 @@ public class PapyrusAsmDecoder
                     NFunctionBlock.FunctionCode = FunctionCode;
                     NFunctionBlock.TracksRef = Tracker;
 
-                    AsmExtend.DeFunctionCode(CodeGenStyle.CSharp,ParentCls, NFunctionBlock, Tracker, CanSkipPscDeCode);
+                    AsmExtend.DeFunctionCode(CodeGenStyle.CSharp,TempStrings,ParentCls, NFunctionBlock, Tracker, CanSkipPscDeCode);
 
                     FunctionBlocks.Add(NFunctionBlock);
                 }
@@ -527,7 +527,7 @@ public class AsmLink
     private AsmLink Head = null;
     public AsmLink Next = null;
     public AsmLink Prev = null;   
-    public AsmLink Tail = null;
+    private AsmLink Tail = null;
 
     public string GetValue(AsmValueType Type = AsmValueType.Null)
     {
@@ -559,6 +559,10 @@ public class AsmLink
                return SetValue;
             }
         }
+    }
+    public AsmLink GetTail()
+    {
+        return Tail ?? this;
     }
     public AsmLink GetHead()
     {

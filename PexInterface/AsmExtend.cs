@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using static PexInterface.PexReader;
 
 namespace PexInterface
 {
@@ -23,7 +24,7 @@ namespace PexInterface
         }
 
    
-        public static void DeFunctionCode(CodeGenStyle Style,PscCls ParentCls,FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
+        public static void DeFunctionCode(CodeGenStyle Style,List<PexString> TempStrings,PscCls ParentCls,FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
         {
 //assign iSelect
 //callmethod GetSize ::aaa_RDOPreventedActorsList_var ::temp269
@@ -60,12 +61,18 @@ namespace PexInterface
                     {
                         if (AsmLine.Links != null)
                         {
+                            var Head = AsmLine.Links.GetHead();
+                            var Tail = AsmLine.Links.GetTail();
+
                             switch (AsmLine.OPCode)
                             {
                                 case "assign":
                                     {
-                                        string GetVariableName = AsmLine.Links.GetHead().GetValue();
+                                        string GetVariableName = Head.GetValue();
                                         TrackerRef.Variables.Add(new AsmOffset(i, 0), GetVariableName, 0, null, VariableAccess.None);
+                                        if (Head.InFo != null)
+                                        { 
+                                        }
                                     }
                                     break;
                                 case "callmethod":
@@ -82,14 +89,14 @@ namespace PexInterface
 
                                         if (State == 3)
                                         {
-                                            string GetVariableName = AsmLine.Links.Tail.GetValue();
+                                            string GetVariableName = Tail.GetValue();
 
                                             //Test
-                                            AsmLine.PSCCode = GetVariableName + " = " + AsmLine.Links.Tail.Prev.GetValue() + "." + GetFunctionName + "();";
+                                            AsmLine.PSCCode = GetVariableName + " = " + Tail.Prev.GetValue() + "." + GetFunctionName + "();";
 
                                             TrackerRef.Variables.Add(new AsmOffset(i, 2), GetVariableName, State, new List<AsmLink>() {
-                                                AsmLine.Links.Tail.Prev,
-                                                AsmLine.Links.GetHead()
+                                                Tail.Prev,
+                                                Head
                                             }, VariableAccess.Set);
                                         }
                                     }
