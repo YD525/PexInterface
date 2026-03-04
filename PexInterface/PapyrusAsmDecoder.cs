@@ -818,9 +818,26 @@ public class AsmBase
     }
 }
 
+public class AsmVariable
+{
+    public string Name = null;
+    public bool IsTemp = false;
+    public int StartIndex = 0;
+    public AsmVariable(string Variable)
+    {
+        Variable = Variable.Trim();
+
+        if (Regex.IsMatch(Variable, @"^temp\d+$"))
+        {
+            IsTemp = true;
+        }
+
+        this.Name = Variable;
+    }
+}
 public class VariableTracker
 {
-   
+    public List<AsmVariable> Variables = new List<AsmVariable>();
 }
 
 public class AsmCode:AsmBase
@@ -831,11 +848,11 @@ public class AsmCode:AsmBase
     public void Parse(string OPCode, string Line)
     {
         this.OPCode = OPCode.Trim().ToLower();
-        Line = Line.Trim();
+
         if (Line.Contains(" "))
         {
-            this.Param = Line.Split(' ')[0];
-            string GetLinkStr = Line.Split(' ')[1];
+            this.Param = Line.Split(' ')[0].Trim();
+            string GetLinkStr = Line.Split(' ')[1].Trim();
 
             if (GetLinkStr.Length > 0)
             {
@@ -846,16 +863,22 @@ public class AsmCode:AsmBase
         {
             if (Line.Length > 0)
             {
-                this.ParseLink(Line);
+                this.ParseLink(Line.Trim());
             }
         }
     }
 
     public string GetAsmCode()
     {
-        string Code = this.OPCode + " " + this.Param + " " + this.Links.GetAsmCode();
-
-        return Code;
+        return string.Join(" ",
+            new[]
+            {
+                this.OPCode,
+                this.Param,
+                this.Links?.GetAsmCode()
+            }
+            .Where(Str => !string.IsNullOrWhiteSpace(Str))
+        );
     }
 
     public string GetCode()
