@@ -25,6 +25,26 @@ namespace PexInterface
    
         public static void DeFunctionCode(CodeGenStyle Style,PscCls ParentCls,FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
         {
+//assign iSelect
+//callmethod GetSize ::aaa_RDOPreventedActorsList_var ::temp269
+//cmp_lt ::temp270 iSelect ::temp269
+//jmpf ::temp270
+//callmethod SetMenuDialogOptions self ::nonevar  ActorsPrevented
+//array_getelement ::temp269 ActorsListIndex iSelect
+//callmethod SetMenuDialogStartIndex self ::nonevar  ::temp269
+//callmethod SetMenuDialogDefaultIndex self ::nonevar
+//iadd ::temp269 iSelect
+//assign iSelect ::temp269
+//jmp 
+
+
+//Int iSelect = 0 ; 
+//While iSelect < aaa_RDOPreventedActorsList.GetSize() ; 
+//Self.SetMenuDialogOptions(ActorsPrevented) ;
+//Self.SetMenuDialogStartIndex(ActorsListIndex[iSelect]) ; 
+//Self.SetMenuDialogDefaultIndex(0) ; 
+//iSelect += 1 ; 
+//EndWhile
             if (Func.FunctionName == "OnMenuOpenST")
             {
                 if (CanSkipPscDeCode)
@@ -32,9 +52,52 @@ namespace PexInterface
                     return;
                 }
 
-                VariableTracker TempVariables = new VariableTracker();
+                for (int i = 0; i < TrackerRef.Lines.Count; i++)
+                {
+                    var AsmLine = TrackerRef.Lines[i];
 
-               
+                    if (AsmLine != null)
+                    {
+                        if (AsmLine.Links != null)
+                        {
+                            switch (AsmLine.OPCode)
+                            {
+                                case "assign":
+                                    {
+                                        string GetVariableName = AsmLine.Links.GetHead().GetValue();
+                                        TrackerRef.Variables.Add(new AsmOffset(i, 0), GetVariableName, 0, null, VariableAccess.None);
+                                    }
+                                    break;
+                                case "callmethod":
+                                    {
+                                        int State = 0;
+                                        AsmLine.Links.ForEachForward(new Action<AsmLink>((Link) => {
+                                            if (!Link.IsNull() && !Link.IsSelf())
+                                            {
+                                                State++;
+                                            }
+                                        }));
+                                        var GetFunctionName = AsmLine.Links.GetHead().GetValue();
+                                        TrackerRef.Variables.Add(new AsmOffset(i, 0), GetFunctionName, State, null, VariableAccess.None);
+
+                                        if (State == 3)
+                                        {
+                                            string GetVariableName = AsmLine.Links.Tail.GetValue();
+
+                                            //Test
+                                            AsmLine.PSCCode = GetVariableName + " = " + AsmLine.Links.Tail.Prev.GetValue() + "." + GetFunctionName + "();";
+
+                                            TrackerRef.Variables.Add(new AsmOffset(i, 2), GetVariableName, 0, new List<AsmLink>() {
+                                                AsmLine.Links.Tail.Prev,
+                                                AsmLine.Links.GetHead()
+                                            }, VariableAccess.Set);
+                                        }
+                                    }
+                                    break;
+                            }
+                        }
+                    }
+                }
 
                 //for (int i = 0; i < Keys.Count; i++)
                 //{

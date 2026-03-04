@@ -488,7 +488,7 @@ public class AsmLink
     private TokenSeparator Separator = TokenSeparator.Null;
     private string Value = null;
     public string UPDateValue = null;
-    public AsmLink Head = null;
+    private AsmLink Head = null;
     public AsmLink Next = null;
     public AsmLink Prev = null;   
     public AsmLink Tail = null;
@@ -528,7 +528,6 @@ public class AsmLink
     {
         return Head ?? this;
     }
-
     public void Remove()
     {
         var Head = GetHead();
@@ -831,10 +830,12 @@ public class AsmOffset
 public class AsmAction
 {
     public VariableAccess Access;
+    public int State = 0;
     public List<AsmLink> Links;
-    public AsmAction(VariableAccess Access,List<AsmLink> Links)
+    public AsmAction(VariableAccess Access,int State,List<AsmLink> Links)
     {
         this.Access = Access;
+        this.State = State;
         this.Links = Links;
     }
 }
@@ -891,17 +892,17 @@ public class VariableTracker
         Variable = Variable.Trim();
         return _Variables.ContainsKey(Variable);
     }
-    public void Add(AsmOffset Offset,string Variable,List<AsmLink> Links,VariableAccess Access)
+    public void Add(AsmOffset Offset,string Variable,int State,List<AsmLink> Links,VariableAccess Access)
     {
         if (IsCreated(Variable))
         {
             if (_Variables[Variable].Actions.ContainsKey(Offset))
             {
-                _Variables[Variable].Actions[Offset] = new AsmAction(Access,Links);
+                _Variables[Variable].Actions[Offset] = new AsmAction(Access,State,Links);
             }
             else
             {
-                _Variables[Variable].Actions.Add(Offset, new AsmAction(Access,Links));
+                _Variables[Variable].Actions.Add(Offset, new AsmAction(Access,State,Links));
             }
         }
         else
@@ -915,7 +916,7 @@ public class VariableTracker
                 Var.IsTemp = true;
             }
 
-            Var.Actions.Add(Offset,new AsmAction(VariableAccess.Created|Access,Links));
+            Var.Actions.Add(Offset,new AsmAction(VariableAccess.Created|Access,State,Links));
 
             this._Variables.Add(Variable, Var);
         }
