@@ -32,178 +32,179 @@ namespace PexInterface
                     return;
                 }
 
-                List<TempVariable> TempVariables = new List<TempVariable>();
-                List<int> Keys = TrackerRef.Tracks.Keys.ToList();
+                VariableTracker TempVariables = new VariableTracker();
 
-                for (int i = 0; i < Keys.Count; i++)
-                {
-                    var Key = Keys[i];
-                    var Track = TrackerRef.Tracks[Key].TrackRef;
+               
 
-                    string GetCodeLine = TrackerRef.Tracks[Keys[i]].Assembly;
+                //for (int i = 0; i < Keys.Count; i++)
+                //{
+                //    var Key = Keys[i];
+                //    var Track = TrackerRef.Tracks[Key].TrackRef;
 
-                    if (Track is TVariable)
-                    {
-                        var Variable = (TVariable)Track;
+                //    string GetCodeLine = TrackerRef.Tracks[Keys[i]].Assembly;
 
-                        var Get = TrackerRef.QueryMethodVariable(Variable.VariableName);
-                        if (Get == "" && Variable.VariableName.Length > 0)
-                        {
-                            var GlobalVariable = ParentCls.QueryGlobalVariable(Variable.VariableName);
-                            if (GlobalVariable == null)
-                            {
-                                var AutoVariable = ParentCls.QueryAutoGlobalVariable(Variable.VariableName);
+                //    if (Track is TVariable)
+                //    {
+                //        var Variable = (TVariable)Track;
 
-                                if (AutoVariable == null)
-                                {
-                                    TempVariables.Add(new TempVariable(Variable.VariableName, i));
-                                }
-                                else
-                                {
+                //        var Get = TrackerRef.QueryMethodVariable(Variable.VariableName);
+                //        if (Get == "" && Variable.VariableName.Length > 0)
+                //        {
+                //            var GlobalVariable = ParentCls.QueryGlobalVariable(Variable.VariableName);
+                //            if (GlobalVariable == null)
+                //            {
+                //                var AutoVariable = ParentCls.QueryAutoGlobalVariable(Variable.VariableName);
+
+                //                if (AutoVariable == null)
+                //                {
+                //                    TempVariables.Add(new TempVariable(Variable.VariableName, i));
+                //                }
+                //                else
+                //                {
                                   
-                                }
-                            }
-                            else
-                            {
+                //                }
+                //            }
+                //            else
+                //            {
                                
-                            }
-                        }
-                        else
-                        { 
+                //            }
+                //        }
+                //        else
+                //        { 
                         
-                        }
-                    }
-                    else
-                    if (Track is AsmCall)
-                    {
+                //        }
+                //    }
+                //    else
+                //    if (Track is AsmCall)
+                //    {
 
-                        //callmethod GetSize ::aaa_RDOPreventedActorsList_var ::temp269
+                //        //callmethod GetSize ::aaa_RDOPreventedActorsList_var ::temp269
 
-                        //While iSelect<aaa_RDOPreventedActorsList.GetSize() ;
+                //        //While iSelect<aaa_RDOPreventedActorsList.GetSize() ;
 
-                        //callmethod SetMenuDialogStartIndex self::nonevar ::temp269
-                        //Self.SetMenuDialogStartIndex(ActorsListIndex[iSelect]) ; 
-                        //SetMenuDialogStartIndex(temp269);
+                //        //callmethod SetMenuDialogStartIndex self::nonevar ::temp269
+                //        //Self.SetMenuDialogStartIndex(ActorsListIndex[iSelect]) ; 
+                //        //SetMenuDialogStartIndex(temp269);
 
-                        string PscCode = "";
-                        var Function = (AsmCall)Track;
-                        if (Function.Links.HaveValue())
-                        {
-                            if (Function.OPCode.Equals("callmethod"))
-                            {
-                                //int Index = 0;
-                                //bool Self = false;
-                                //string Params = "";
+                //        string PscCode = "";
+                //        var Function = (AsmCall)Track;
+                //        if (Function.Links.HaveValue())
+                //        {
+                //            if (Function.OPCode.Equals("callmethod"))
+                //            {
+                //                //int Index = 0;
+                //                //bool Self = false;
+                //                //string Params = "";
 
-                                //Function.Links.ForEachForward(new Action<AsmLink>((LinkItem) =>
-                                //{
-                                //    if (LinkItem.Value.StartsWith("::"))
-                                //    {
-                                //        if (!Self)
-                                //        {
-                                //            if (!LinkItem.IsNull())
-                                //            {
-                                //                if (!LinkItem.IsVar())
-                                //                {
-                                //                    PscCode = Function.Call + "." + LinkItem.GetValue() + "()";
-                                //                }
-                                //                else
-                                //                {
-                                //                    PscCode = LinkItem.GetValue() + "." + Function.Call + "()";
-                                //                }
+                //                //Function.Links.ForEachForward(new Action<AsmLink>((LinkItem) =>
+                //                //{
+                //                //    if (LinkItem.Value.StartsWith("::"))
+                //                //    {
+                //                //        if (!Self)
+                //                //        {
+                //                //            if (!LinkItem.IsNull())
+                //                //            {
+                //                //                if (!LinkItem.IsVar())
+                //                //                {
+                //                //                    PscCode = Function.Call + "." + LinkItem.GetValue() + "()";
+                //                //                }
+                //                //                else
+                //                //                {
+                //                //                    PscCode = LinkItem.GetValue() + "." + Function.Call + "()";
+                //                //                }
 
-                                //                if ((LinkItem.Prev != null && !LinkItem.Prev.IsNull()) && PscCode.Length > 0)
-                                //                {
-                                //                    PscCode = LinkItem.Value + "&" + PscCode;
-                                //                }
+                //                //                if ((LinkItem.Prev != null && !LinkItem.Prev.IsNull()) && PscCode.Length > 0)
+                //                //                {
+                //                //                    PscCode = LinkItem.Value + "&" + PscCode;
+                //                //                }
 
-                                //                if (Style == CodeGenStyle.CSharp)
-                                //                {
-                                //                    PscCode += ";";
-                                //                }
-                                //            }
-                                //        }
-                                //        else
-                                //        {
-                                //            if (!LinkItem.IsNull())
-                                //            {
-                                //                Params += LinkItem.GetValue() + ",";
-                                //            }
-                                //        }
-                                //    }
+                //                //                if (Style == CodeGenStyle.CSharp)
+                //                //                {
+                //                //                    PscCode += ";";
+                //                //                }
+                //                //            }
+                //                //        }
+                //                //        else
+                //                //        {
+                //                //            if (!LinkItem.IsNull())
+                //                //            {
+                //                //                Params += LinkItem.GetValue() + ",";
+                //                //            }
+                //                //        }
+                //                //    }
 
-                                //    if (LinkItem.IsSelf())
-                                //    {
-                                //        Self = true;
-                                //    }
+                //                //    if (LinkItem.IsSelf())
+                //                //    {
+                //                //        Self = true;
+                //                //    }
 
-                                //    Index++;
-                                //}));
+                //                //    Index++;
+                //                //}));
 
-                                //if (Params.Length > 0)
-                                //{
-                                //    if (Params.EndsWith(","))
-                                //    {
-                                //        Params = Params.Substring(0, Params.Length - ",".Length);
-                                //    }
+                //                //if (Params.Length > 0)
+                //                //{
+                //                //    if (Params.EndsWith(","))
+                //                //    {
+                //                //        Params = Params.Substring(0, Params.Length - ",".Length);
+                //                //    }
 
-                                //    PscCode = Function.Call + "(" + Params + ")";
+                //                //    PscCode = Function.Call + "(" + Params + ")";
 
-                                //    if (Style == CodeGenStyle.CSharp)
-                                //    {
-                                //        PscCode += ";";
-                                //    }
-                                //}
+                //                //    if (Style == CodeGenStyle.CSharp)
+                //                //    {
+                //                //        PscCode += ";";
+                //                //    }
+                //                //}
 
-                                //Function.PSCCode = PscCode;
-                            }
-                        }
-                        else
-                        { 
+                //                //Function.PSCCode = PscCode;
+                //            }
+                //        }
+                //        else
+                //        { 
                         
-                        }
-                    }
-                    else
-                    if (Track is TProp)
-                    {
+                //        }
+                //    }
+                //    else
+                //    if (Track is TProp)
+                //    {
 
-                    }
-                    else
-                    if (Track is TStrcat)
-                    {
+                //    }
+                //    else
+                //    if (Track is TStrcat)
+                //    {
 
-                    }
-                    else
-                    if (Track is TOperator)
-                    {
+                //    }
+                //    else
+                //    if (Track is TOperator)
+                //    {
 
-                    }
-                    else
-                    if (Track is TJump)
-                    {
+                //    }
+                //    else
+                //    if (Track is TJump)
+                //    {
 
-                    }
-                    else
-                    if (Track is TValIncrease)
-                    {
+                //    }
+                //    else
+                //    if (Track is TValIncrease)
+                //    {
 
-                    }
-                    else
-                    if (Track is TReturn)
-                    {
+                //    }
+                //    else
+                //    if (Track is TReturn)
+                //    {
 
-                    }
-                    else
-                    if (Track is TArrayOP)
-                    {
+                //    }
+                //    else
+                //    if (Track is TArrayOP)
+                //    {
 
-                    }
-                    else
-                    if (Track is TVariableSetter)
-                    {
+                //    }
+                //    else
+                //    if (Track is TVariableSetter)
+                //    {
 
-                    }
-                }
+                //    }
+                //}
             }
           
         }

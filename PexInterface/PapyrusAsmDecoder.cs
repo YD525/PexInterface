@@ -274,7 +274,7 @@ public class PapyrusAsmDecoder
 
                     string FunctionCode = "";
                     int LineIndex = 0;
-                    DecompileTracker Tracker = new DecompileTracker(Item.Value);
+                    DecompileTracker Tracker = new DecompileTracker();
 
                     foreach (var GetInstruction in GetFunc1st.Instructions)
                     {
@@ -337,12 +337,12 @@ public class PapyrusAsmDecoder
 
                         CurrentLine = CurrentLine.Trim();
                         FunctionCode += GetOPName + " " + CurrentLine + "\n";
-                        Tracker.CheckCode(LineIndex, GetOPName,CurrentLine);
+                        Tracker.CheckCode(GetOPName,FunctionCode);
                         LineIndex++;
                     }
 
                     NFunctionBlock.FunctionCode = FunctionCode;
-                    NFunctionBlock.TracksRef = Tracker.Tracks;
+                    NFunctionBlock.TracksRef = Tracker;
 
                     AsmExtend.DeFunctionCode(CodeGenStyle.CSharp,ParentCls, NFunctionBlock, Tracker, CanSkipPscDeCode);
 
@@ -433,7 +433,7 @@ public class FunctionBlock
 
     public int StartIndex = 0;
 
-    public Dictionary<int, AssemblyLine> TracksRef = null;
+    public DecompileTracker TracksRef = null;
 }
 
 
@@ -470,31 +470,54 @@ public class CastLink
 
 public enum TokenSeparator
 {
-    None,
-    Space,
-    DoubleColon
+    Null = 0,
+    Space = 1,
+    DoubleColon = 2
+}
+
+public enum AsmValueType
+{
+    Null = 0,
+    Original = 1
 }
 
 public class AsmLink
 {
-    public TokenSeparator Separator = TokenSeparator.None;
-    public string Value = "";
+    private TokenSeparator Separator = TokenSeparator.Null;
+    private string Value = null;
+    public string UPDateValue = null;
     public AsmLink Next = null;
     public AsmLink Prev = null;   
     public AsmLink Tail = null;
 
-    public string GetValue()
+    public string GetValue(AsmValueType Type = AsmValueType.Null)
     {
         string SetValue = Value.Trim();
-        if (SetValue.StartsWith("::"))
-        { 
-           SetValue = SetValue.Substring("::".Length);
-        }
-        if (SetValue.EndsWith("_var"))
+
+        if (Type == AsmValueType.Null)
         {
-            SetValue = SetValue.Substring(0, SetValue.Length - "_var".Length);
+            if (SetValue.EndsWith("_var"))
+            {
+                SetValue = SetValue.Substring(0, SetValue.Length - "_var".Length);
+            }
+            return SetValue;
         }
-        return SetValue;
+        else
+        {
+            if (this.Separator == TokenSeparator.DoubleColon)
+            {
+                return "::" + SetValue;
+            }
+            else
+            if (this.Separator == TokenSeparator.Space)
+            {
+                return " " + SetValue;
+            }
+            else
+            { 
+               return SetValue;
+            }
+        }
     }
     public AsmLink GetHead()
     {
@@ -587,22 +610,27 @@ public class AsmLink
         }
         return false;
     }
-
-    public void SetValue(string value)
+    public void SetValue(string Value, TokenSeparator Separator)
     {
-        if (Value == null)
+        if (this.Value == null)
         {
-            Value = value;
+            this.Value = Value;
+            this.Separator = Separator;
             Tail = this;
         }
         else
         {
-            var NewNode = new AsmLink { Value = value, Prev = Tail };
+            var NewNode = new AsmLink
+            {
+                Value = Value,
+                Separator = Separator,
+                Prev = Tail
+            };
+
             Tail.Next = NewNode;
             Tail = NewNode;
         }
     }
-
     public string GetValue(int Index)
     {
         var Node = this;
@@ -687,65 +715,132 @@ public class AsmLink
         }
         return Result;
     }
+
+    public string GetAsmCode()
+    {
+        string Line = "";
+
+        this.ForEachForward(new Action<AsmLink>((Word) => 
+        {
+            Line += Word.GetValue(AsmValueType.Original);
+        }));
+
+        return Line;
+    }
+
+    public void UPDate(string Value)
+    { 
+       this.UPDateValue = Value;
+    }
+
+    public string GetCode()
+    {
+        string Line = "";
+
+        this.ForEachForward(new Action<AsmLink>((Word) =>
+        {
+            if (Word.UPDateValue != null)
+            {
+                Line += Word.UPDateValue;
+            }
+            else
+            {
+                Line += Word.GetValue();
+            } 
+        }));
+
+        return Line;
+    }
+
+    public static void ParseLink(ref AsmLink Links, string Str)
+    {
+        var Matches = Regex.Matches(Str, @"(::)|(""[^""]*"")|(\S+)|(\s+)");
+
+        TokenSeparator PendingSeparator = TokenSeparator.Null;
+
+        foreach (Match M in Matches)
+        {
+            var Token = M.Value;
+
+            if (Token == "::")
+            {
+                PendingSeparator = TokenSeparator.DoubleColon;
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(Token))
+            {
+                PendingSeparator = TokenSeparator.Space;
+                continue;
+            }
+
+            Links.SetValue(Token, PendingSeparator);
+            PendingSeparator = TokenSeparator.Null;
+        }
+    }
 }
 public class AsmBase
 {
     public string OPCode = "";
-    public string AsmCode = "";
     public string PSCCode = "";
     public int LineIndex = 0;
+    public int SpaceCount = 0;
     public AsmLink Links = new AsmLink();
 
-    public void ParseLink(string Str)
+    protected void ParseLink(string Str)
     {
-        var Tokens = new List<string>();
-
-        var Matches = Regex.Matches(Str, @"(::\w+)|(""[^""]*"")|(\S+)");
-
-        foreach (Match m in Matches)
-        {
-            Tokens.Add(m.Value);
-        }
-
-        Tokens.Reverse();
-
-        foreach (var Token in Tokens)
-        {
-            this.Links.SetValue(Token);
-        }
+        AsmLink.ParseLink(ref Links,Str);
     }
 }
 
-public class AsmVariable:AsmBase
+public class VariableTracker
 {
-    public string Tag = "";
-    public string VariableName = "";
+   
 }
 
 public class AsmCode:AsmBase
 {
-    public string Call = "";
-    public string VariableLink = "";
     public string Param = "";
+    public string VariableLink = "";
 
-    public void Parse(string Line)
+    public void Parse(string OPCode, string Line)
     {
+        this.OPCode = OPCode.Trim().ToLower();
+        Line = Line.Trim();
         if (Line.Contains(" "))
         {
-            this.Call = Line.Split(' ')[0];
-            this.ParseLink(Line.Split(' ')[1]);
-        }
+            this.Param = Line.Split(' ')[0];
+            string GetLinkStr = Line.Split(' ')[1];
 
-        this.ParseLink(Line);
+            if (GetLinkStr.Length > 0)
+            {
+                this.ParseLink(GetLinkStr);
+            }
+        }
+        else
+        {
+            if (Line.Length > 0)
+            {
+                this.ParseLink(Line);
+            }
+        }
     }
 
-    public void GetCode()
+    public string GetAsmCode()
     {
-        string Line = "";
-        this.Links.ForEachForward(new Action<AsmLink>((Word) => {
-            Line += Word.Value + " ";
-        }));
-        string Code = this.Call +
+        string Code = this.OPCode + " " + this.Param + " " + this.Links.GetAsmCode();
+
+        return Code;
+    }
+
+    public string GetCode()
+    {
+        return this.PSCCode;
+    }
+
+    public string GetNote()
+    {
+        return "//" + GetAsmCode();
     }
 
     ///// <summary>
@@ -769,300 +864,61 @@ public class AsmCode:AsmBase
 
 public class DecompileTracker
 {
-    public string FuncName = "";
-
-    public Dictionary<int, AssemblyLine> Tracks = new Dictionary<int, AssemblyLine>();
-
-    public List<TVariable> _PexVariables = new List<TVariable>();
-    public List<AsmCall> AsmCalls = new List<AsmCall>();
-    public List<CastLink> _CastLinks = new List<CastLink>();
-    public List<TProp> _Props = new List<TProp>();
-    public List<TStrcat> _StrMerges = new List<TStrcat>();
-    public List<TOperator> _Operators = new List<TOperator>();
-    public List<TJump> _Jumps = new List<TJump>();
-    public List<TValIncrease> _TIncreases =new List<TValIncrease>();
-    public List<TReturn> _Returns = new List<TReturn>();
-    public List<TArrayOP> _Arrays = new List<TArrayOP>();
-    public List<TVariableSetter> _VariableSetters = new List<TVariableSetter>();
-
-    public DecompileTracker(string FuncName)
+    public List<AsmCode> Lines = new List<AsmCode>();
+    public void CheckCode(string OPCode,string Line)
     {
-        this.FuncName = FuncName;
-    }
-   
-   
-    public void CheckCode(int LineIndex, string OPCode, string Line)
-    {
-        List<string> GetParams = CreateParams(Line);
-        string DefLine = OPCode + " " + Line;
+        AsmCode NewLine = new AsmCode();
+        NewLine.Parse(OPCode,Line);
+        Lines.Add(NewLine);
 
-        if (OPCode == "return")
-        {
-            var SetReturn = new TReturn(LineIndex, GetParams);
-            _Returns.Add(SetReturn);
-            Tracks.Add(LineIndex, new AssemblyLine(DefLine, SetReturn));
-        }
-        else
-        if (OPCode == "callmethod" || OPCode == "callparent" || OPCode == "callstatic")
-        {
-            AsmCall NTFunction = new AsmCall();
-            NTFunction.LineIndex = LineIndex;
-            NTFunction.OPCode = OPCode;
-            NTFunction.AsmCode = OPCode + " " + Line;
-            NTFunction.Call = Line.Split(' ')[0].Trim();
-            NTFunction.Parse(Line);
-
-            AsmCalls.Add(NTFunction);
-            Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTFunction));
-        }
-        else
-        if (OPCode == "assign")
-        {
-            if (GetParams.Count == 2)
-            {
-                TVariable NTVariable = new TVariable();
-                NTVariable.LineIndex = LineIndex;
-                NTVariable.Tag = GetParams[1];
-                NTVariable.VariableName = GetParams[0];
-
-                _PexVariables.Add(NTVariable);
-                Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTVariable));
-            }
-            else
-            {
-                if (Line.Split(' ').Length == 2)
-                {
-                    TVariableSetter NVariableSetter = new TVariableSetter();
-                    NVariableSetter.LineIndex = LineIndex;
-                    NVariableSetter.Parent = Line.Split(' ')[0];
-                    NVariableSetter.Child = Line.Split(' ')[1];
-                    _VariableSetters.Add(NVariableSetter);
-
-                    Tracks.Add(LineIndex, new AssemblyLine(DefLine, NVariableSetter));
-                }
-                else
-                {
-                    TVariable NTVariable = new TVariable();
-                    NTVariable.VariableName = Line;
-                    NTVariable.LineIndex = LineIndex;
-
-                    _PexVariables.Add(NTVariable);
-                    Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTVariable));
-                }
-            }
-        }
-        else
-        if (OPCode == "cast")
-        {
-            bool FindLink = false;
-            int SetOffset = -1;
-
-            for (int i = 0; i < this._CastLinks.Count; i++)
-            {
-                foreach (var CheckLink in GetParams)
-                {
-                    if (this._CastLinks[i].Find(CheckLink))
-                    {
-                        SetOffset = i;
-                        FindLink = true;
-                        goto SetLink;
-                    }
-                }
-            }
-
-        SetLink:
-            if (FindLink)
-            {
-                this._CastLinks[SetOffset].AddLinks(GetParams);
-            }
-            else
-            {
-                CastLink NCastLink = new CastLink();
-                NCastLink.LineIndex = LineIndex;
-                NCastLink.AddLinks(GetParams);
-
-                this._CastLinks.Add(NCastLink);
-            }
-        }
-        else
-        if (OPCode == "propget" || OPCode == "propset")
-        {
-            TProp NTProp = new TProp();
-            NTProp.LineIndex = LineIndex;
-
-            if (OPCode == "propset")
-            {
-                NTProp.IsGetOrSet = 1;
-            }
-
-            if (GetParams.Count == 2)
-            {
-                string GetPropName = GetParams[0];
-                GetPropName = GetPropName.Trim();
-
-                if (GetPropName.Contains(" "))
-                {
-                    var GetPropNames = GetPropName.Split(' ');
-                    if (GetPropNames.Length >= 2)
-                    {
-                        NTProp.PropName = GetPropNames[0];
-
-                        if (GetPropNames[1] == "self")
-                        {
-                            NTProp.Self = true;
-                        }
-                    }
-
-                    NTProp.LinkVariable = GetParams[1];
-                }
-                else
-                {
-                    NTProp.PropName = GetPropName;
-                    NTProp.LinkVariable = GetParams[1];
-                }
-            }
-            else
-            {
-                List<string> GetFronts = new List<string>();
-
-                foreach (var Get in GetParams)
-                {
-                    if (Get.Trim() != GetParams[GetParams.Count - 1].Trim() && Get.Trim() != GetParams[0].Trim())
-                    {
-                        GetFronts.Add(Get.Trim());
-                    }
-                }
-
-                NTProp.PropName = GetParams[0].Trim();
-                NTProp.LinkVariable = GetParams[GetParams.Count - 1].Trim();
-                NTProp.Fronts = GetFronts;
-            }
-
-            _Props.Add(NTProp);
-            Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTProp));
-        }
-        else
-        if (OPCode == "strcat")
-        {
-            if (GetParams.Count > 0)
-            {
-                string StrValue = "";
-                List<string> StrcatParams = new List<string>();
-
-                if (GetParams.Count > 0 && GetParams.Count < 2)
-                {
-                    foreach (var Get in GetParams[0].Split(' '))
-                    {
-                        if (Get.Trim().StartsWith("\""))
-                        {
-                            StrValue = Get.Trim();
-                        }
-                        else
-                        if (Get.Trim().Length > 0)
-                        {
-                            StrcatParams.Add(Get.Trim());
-                        }
-                    }
-                }
-                else
-                if (GetParams.Count >= 2)
-                {
-                    StrcatParams = GetParams;
-                }
-
-                TStrcat NTStrcat = new TStrcat();
-                NTStrcat.LineIndex = LineIndex;
-                NTStrcat.LinkVariable = StrcatParams[0].Trim();
-                if (StrValue.Trim().Length > 0)
-                {
-                    NTStrcat.Value = StrcatParams[StrcatParams.Count - 1];
-                    NTStrcat.MergeStr = StrValue;
-                }
-                else
-                {
-                    NTStrcat.MergeStr = StrcatParams[StrcatParams.Count - 1];
-                }
-
-                NTStrcat.MergeStr = NTStrcat.MergeStr.Trim();
-                if (NTStrcat.MergeStr.StartsWith(NTStrcat.LinkVariable))
-                {
-                    NTStrcat.MergeStr = NTStrcat.MergeStr.Substring(NTStrcat.LinkVariable.Length).Trim();
-                    NTStrcat.IsLeft = true;
-                }
-                if (NTStrcat.MergeStr.EndsWith(NTStrcat.LinkVariable))
-                {
-                    NTStrcat.MergeStr = NTStrcat.MergeStr.Substring(0, NTStrcat.MergeStr.Length - NTStrcat.LinkVariable.Length).Trim();
-                    NTStrcat.IsLeft = false;
-                }
-                _StrMerges.Add(NTStrcat);
-                Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTStrcat));
-            }
-        }
-        else
-        if (OPCode == "cmp_eq" || OPCode == "cmp_lt" || OPCode == "cmp_le" || OPCode == "cmp_gt" || OPCode == "cmp_ge" || OPCode == "not" || OPCode == "isub")
-        {
-            if (GetParams.Count > 0)
-            {
-                TOperator NTOperator = new TOperator();
-                NTOperator.LineIndex = LineIndex;
-                NTOperator.Operator = OPCode;
-                NTOperator.Variables = GetParams;
-
-                _Operators.Add(NTOperator);
-                Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTOperator));
-            }
-            else
-            {
-                throw new Exception("cmp parse failed.");
-            }
-        }
-        else
-        if (OPCode == "jmpt" || OPCode == "jmpf" || OPCode == "jmp")
-        {
-            var SetJump = new TJump();
-            SetJump.LineIndex = LineIndex;
-            SetJump.Jump = OPCode;
-
-            if (GetParams.Count > 0)
-            {
-                SetJump.Variable = GetParams[0].Trim();
-            }
-
-            _Jumps.Add(SetJump);
-            Tracks.Add(LineIndex, new AssemblyLine(DefLine, SetJump));
-        }
-        else
-        if (OPCode == "iadd")
-        {
-            var SetIncrease = new TValIncrease();
-            if (GetParams.Count > 0)
-            {
-                if (GetParams[0].Contains(" "))
-                {
-                    SetIncrease.Variable = GetParams[0].Split(' ')[1].Trim();
-                    SetIncrease.Increase = GetParams[0].Split(' ')[0].Trim();
-                }
-                else
-                {
-                    SetIncrease.Increase = GetParams[0].Trim();
-                }
-            }
-
-            _TIncreases.Add(SetIncrease);
-            Tracks.Add(LineIndex, new AssemblyLine(DefLine, SetIncrease));
-        }
-        else
-        if (OPCode == "array_create" || OPCode == "array_setelement" || OPCode == "array_getelement" || OPCode == "array_length")
-        {
-            TArrayOP NTArray = new TArrayOP();
-            NTArray.ArrayOP = OPCode;
-            NTArray.Variables = GetParams;
-            _Arrays.Add(NTArray);
-            Tracks.Add(LineIndex, new AssemblyLine(DefLine, NTArray));
-        }
-        else
-        {
-            Tracks.Add(LineIndex, new AssemblyLine(DefLine));
-        }
+        //if (OPCode == "return")
+        //{
+           
+        //}
+        //else
+        //if (OPCode == "callmethod" || OPCode == "callparent" || OPCode == "callstatic")
+        //{
+           
+        //}
+        //else
+        //if (OPCode == "assign")
+        //{
+           
+        //}
+        //else
+        //if (OPCode == "cast")
+        //{
+           
+        //}
+        //else
+        //if (OPCode == "propget" || OPCode == "propset")
+        //{
+           
+        //}
+        //else
+        //if (OPCode == "strcat")
+        //{
+           
+        //}
+        //else
+        //if (OPCode == "cmp_eq" || OPCode == "cmp_lt" || OPCode == "cmp_le" || OPCode == "cmp_gt" || OPCode == "cmp_ge" || OPCode == "not" || OPCode == "isub")
+        //{
+           
+        //}
+        //else
+        //if (OPCode == "jmpt" || OPCode == "jmpf" || OPCode == "jmp")
+        //{
+           
+        //}
+        //else
+        //if (OPCode == "iadd")
+        //{
+            
+        //}
+        //else
+        //if (OPCode == "array_create" || OPCode == "array_setelement" || OPCode == "array_getelement" || OPCode == "array_length")
+        //{
+          
+        //}
     }
 }

@@ -230,32 +230,25 @@ namespace PexInterface
 
                     int SpaceCount = 2;
 
-                    foreach (var GetTrack in GetFunc.TracksRef.Values)
+                    foreach (var GetLine in GetFunc.TracksRef.Lines)
                     {
-                        string SetLine = "";
+                        string SetCode = GetLine.GetCode();
 
-                        if (GetTrack.Code.Length > 0)
+                        if (SetCode.Length > 0)
                         {
-                            SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount + GetTrack.SpaceCount) + GetTrack.Code + GetTrack.GetNote(Style) + "\n";
+                            SetCode = PexHeuristicAnalysis.GenSpace(SpaceCount + GetLine.SpaceCount) + SetCode + GetLine.GetNote();
                         }
                         else
                         {
-                            if (GetTrack.TrackRef == null)
-                            {
-                                SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount + GetTrack.SpaceCount) + GetTrack.Assembly + "\n";
-                            }
-                            else
-                            {
-                                SetLine = PexHeuristicAnalysis.GenSpace(SpaceCount) + GetTrack.GetNote(Style) + "\n";
-                            }
+                            SetCode = PexHeuristicAnalysis.GenSpace(SpaceCount + GetLine.SpaceCount) + GetLine.GetAsmCode();
                         }
 
-                        if (SetLine.EndsWith("\n"))
+                        if (SetCode.EndsWith("\n"))
                         {
-                            SetLine = SetLine.Substring(0, SetLine.Length - "\n".Length);
+                            SetCode = SetCode.Substring(0, SetCode.Length - "\n".Length);
                         }
 
-                        Content.AppendLine(SetLine);
+                        Content.AppendLine(SetCode);
                     }
 
                     if (Style == CodeGenStyle.Papyrus)
