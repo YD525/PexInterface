@@ -211,7 +211,6 @@ public class PapyrusAsmDecoder
 
         return GlobalVariables;
     }
-
     public List<FunctionBlock> DeFunction(PscCls ParentCls,List<PexString> TempStrings,bool CanSkipPscDeCode)
     {
         List<FunctionBlock> FunctionBlocks = new List<FunctionBlock>();
@@ -892,7 +891,7 @@ public class VariableTracker
         Variable = Variable.Trim();
         return _Variables.ContainsKey(Variable);
     }
-    public void Add(AsmOffset Offset, List<AsmLink> Links,string Variable,VariableAccess Access)
+    public void Add(AsmOffset Offset,string Variable,List<AsmLink> Links,VariableAccess Access)
     {
         if (IsCreated(Variable))
         {
@@ -925,6 +924,86 @@ public class VariableTracker
     {
         _Variables[Variable].Type = Type;
     }
+}
+public enum ControlBlockType
+{
+    If,
+    Else,
+    While,
+    For,
+    Switch,
+    Case
+}
+
+public class ControlBlock
+{
+    public ControlBlockType Type;    
+    public int StartLine;
+    public List<AsmLink> Links;
+    public int? EndLine;  
+    public ControlBlock Parent;
+    public List<ControlBlock> Children = new List<ControlBlock>();
+    public ControlBlock(ControlBlockType Type, int StartLine, List<AsmLink> Links, ControlBlock Parent = null)
+    {
+        this.Type = Type;
+        this.StartLine = StartLine;
+        this.Links = Links;
+        this.Parent = Parent;
+        this.EndLine = null;
+    }
+}
+public class ControlFlowTracker
+{
+    private Stack<ControlBlock> _BlockStack = new Stack<ControlBlock>();
+    private List<ControlBlock> _AllBlocks = new List<ControlBlock>();
+    public void BeginBlock(ControlBlockType Type, int StartLine, List<AsmLink> Links)
+    {
+        ControlBlock Parent = _BlockStack.Count > 0 ? _BlockStack.Peek() : null;
+        ControlBlock Block = new ControlBlock(Type, StartLine, Links, Parent);
+
+        if (Parent != null)
+            Parent.Children.Add(Block);
+
+        _BlockStack.Push(Block);
+        _AllBlocks.Add(Block);
+    }
+
+    public void EndBlock(int EndLine)
+    {
+        if (_BlockStack.Count == 0)
+            throw new InvalidOperationException("No control block to end.");
+
+        ControlBlock Block = _BlockStack.Pop();
+        Block.EndLine = EndLine;
+    }
+    public ControlBlock CurrentBlock => _BlockStack.Count > 0 ? _BlockStack.Peek() : null;
+
+    public ControlBlock GetBlockAtLine(int Line)
+    {
+        foreach (var Block in _AllBlocks)
+        {
+            if (Block.StartLine <= Line && Block.EndLine.HasValue && Line <= Block.EndLine.Value)
+            {
+                var Nested = GetNestedBlock(Block, Line);
+                return Nested ?? Block;
+            }
+        }
+        return null;
+    }
+
+    private ControlBlock GetNestedBlock(ControlBlock Block, int LineIndex)
+    {
+        foreach (var Child in Block.Children)
+        {
+            if (Child.StartLine <= LineIndex && Child.EndLine.HasValue && LineIndex <= Child.EndLine.Value)
+            {
+                var Nested = GetNestedBlock(Child, LineIndex);
+                return Nested ?? Child;
+            }
+        }
+        return null;
+    }
+    public List<ControlBlock> GetAllBlocks() => _AllBlocks;
 }
 
 public class AsmBase
@@ -988,9 +1067,11 @@ public class AsmCode:AsmBase
     //}
   
 }
-
 public class DecompileTracker
 {
+    public VariableTracker Variables = new VariableTracker();
+    public ControlFlowTracker ControlFlows = new ControlFlowTracker();
+
     public List<AsmCode> Lines = new List<AsmCode>();
     public void CheckCode(int LineIndex,string OPCode,string Line)
     {
