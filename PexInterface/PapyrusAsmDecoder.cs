@@ -7,6 +7,7 @@ using System.Reflection.Emit;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Diagnostics.SymbolStore;
+using Microsoft.SqlServer.Server;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -337,7 +338,7 @@ public class PapyrusAsmDecoder
 
                         CurrentLine = CurrentLine.Trim();
                         FunctionCode += GetOPName + " " + CurrentLine + "\n";
-                        Tracker.CheckCode(GetOPName,FunctionCode);
+                        Tracker.CheckCode(GetOPName,CurrentLine);
                         LineIndex++;
                     }
 
@@ -486,13 +487,16 @@ public class AsmLink
     private TokenSeparator Separator = TokenSeparator.Null;
     private string Value = null;
     public string UPDateValue = null;
+    public AsmLink Head = null;
     public AsmLink Next = null;
     public AsmLink Prev = null;   
     public AsmLink Tail = null;
 
     public string GetValue(AsmValueType Type = AsmValueType.Null)
     {
-        string SetValue = Value.Trim();
+        if (Value == null) return string.Empty;
+
+        string SetValue = this.Value.Trim();
 
         if (Type == AsmValueType.Null)
         {
@@ -521,10 +525,7 @@ public class AsmLink
     }
     public AsmLink GetHead()
     {
-        var Node = this;
-        while (Node.Prev != null)
-            Node = Node.Prev;
-        return Node;
+        return Head ?? this;
     }
 
     public void Remove()
@@ -537,9 +538,29 @@ public class AsmLink
         if (Next != null)
             Next.Prev = Prev;
 
-        if (this == Head.Tail)
-            Head.Tail = Prev;
+        if (this == Head)
+        {
+            if (Next != null)
+            {
+                Next.Tail = this.Tail;
+                Next.Head = null;        
 
+                var Node = Next.Next; 
+                while (Node != null)
+                {
+                    Node.Head = Next;
+                    Node = Node.Next;
+                }
+            }
+        }
+        else
+        if (this == Head.Tail)
+        {
+            Head.Tail = Prev;
+        }
+
+        Head = null;
+        Tail = null;
         Next = null;
         Prev = null;
     }
@@ -617,23 +638,27 @@ public class AsmLink
             this.Value = Value;
             this.Separator = Separator;
             Tail = this;
+            Head = null;
         }
         else
         {
+            var Head = GetHead();
+
             var NewNode = new AsmLink
             {
                 Value = Value,
                 Separator = Separator,
-                Prev = Tail
+                Prev = Head.Tail,
+                Head = Head
             };
 
-            Tail.Next = NewNode;
-            Tail = NewNode;
+            Head.Tail.Next = NewNode;
+            Head.Tail = NewNode;
         }
     }
-    public string GetValue(int Index)
+    public string GetValueByIndex(int Index)
     {
-        var Node = this;
+        var Node = GetHead();
         int i = 0;
         while (Node != null)
         {
@@ -647,7 +672,7 @@ public class AsmLink
 
     public string GetValueFromTail(int IndexFromTail)
     {
-        var Node = Tail;
+        var Node = GetHead().Tail;
         int i = 0;
         while (Node != null)
         {
@@ -663,7 +688,7 @@ public class AsmLink
     public int Count()
     {
         int Count = 0;
-        var Node = this;
+        var Node = GetHead();
         while (Node != null)
         {
             Count++;
