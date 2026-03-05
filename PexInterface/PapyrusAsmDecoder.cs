@@ -3,14 +3,10 @@ using System;
 using PexInterface;
 using System.Linq;
 using static PexInterface.PexReader;
-using System.Reflection.Emit;
 using System.Text.RegularExpressions;
-using System.Runtime.InteropServices;
-using System.Diagnostics.SymbolStore;
-using Microsoft.SqlServer.Server;
-using System.Xml.Linq;
-using System.Runtime.CompilerServices;
 using static PapyrusAsmDecoder;
+using System.Diagnostics;
+using System.Text;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -299,7 +295,14 @@ public class PapyrusAsmDecoder
 
                     foreach (var GetInstruction in GetFunc1st.Instructions)
                     {
-                        string GetOPName = GetInstruction.GetOpcodeName();
+                        AsmOPCode OPCode = new AsmOPCode();
+                        OPCode.Value = GetInstruction.GetOpcodeName();
+                        OPCode.Arguments = GetInstruction.Arguments;
+
+                        if (OPCode.Value.StartsWith("jmp"))
+                        { 
+                        
+                        }
 
                         List<AsmOrder> Orders = new List<AsmOrder>();
                         PexFunction PexFunc = null;
@@ -374,7 +377,7 @@ public class PapyrusAsmDecoder
                                 }
                             }
                         }
-                        Tracker.CheckCode(LineIndex,GetOPName,Orders);
+                        Tracker.CheckCode(LineIndex,OPCode, Orders);
                         LineIndex++;
                     }
 
@@ -955,96 +958,236 @@ public class VariableTracker
             this._Variables.Add(Variable, Var);
         }
     }
-    public void SetType(string Variable, AsmVariableType Type)
+    public void SetType(DecompileTracker Tracker, string Variable, AsmVariableType Type)
     {
-        _Variables[Variable].Type = Type;
+        if (_Variables.ContainsKey(Variable))
+        {
+            _Variables[Variable].Type = Type;
+            int ID = GetStartByVarCreated(Variable, 0);
+            if (ID >= 0)
+            {
+                Tracker.Lines[ID].PSCCode = Type.ToString() + " " + Tracker.Lines[ID].PSCCode;
+            }
+        }
+    }
+
+    public int GetStartByVarCreated(string Variable, int Offset)
+    {
+        if (!_Variables.TryGetValue(Variable, out var VarObj))
+            return -1;
+
+        foreach (var Kvp in VarObj.Actions)
+        {
+            if (Kvp.Key.Offset == Offset)
+            {
+                var Action = Kvp.Value;
+                if ((Action.Access & VariableAccess.Created) == VariableAccess.Created)
+                    return Kvp.Key.LineIndex;
+            }
+        }
+
+        return -1;
     }
 }
+
+#region ControlFlow
+
 public enum ControlBlockType
 {
     If,
     Else,
-    While,
-    For,
-    Switch,
-    Case
+    While
 }
 
 public class ControlBlock
 {
-    public ControlBlockType Type;    
+    public ControlBlockType Type;
     public int StartLine;
-    public List<AsmLink> Links;
-    public int? EndLine;  
+    public int? EndLine;
+    public AsmLink Links;
     public ControlBlock Parent;
     public List<ControlBlock> Children = new List<ControlBlock>();
-    public ControlBlock(ControlBlockType Type, int StartLine, List<AsmLink> Links, ControlBlock Parent = null)
+
+    public ControlBlock(ControlBlockType type, int startLine, AsmLink links, ControlBlock parent = null)
     {
-        this.Type = Type;
-        this.StartLine = StartLine;
-        this.Links = Links;
-        this.Parent = Parent;
-        this.EndLine = null;
+        Type = type;
+        StartLine = startLine;
+        Links = links;
+        Parent = parent;
+        EndLine = null;
+    }
+
+    public int Depth => Parent != null ? Parent.Depth + 1 : 0;
+}
+
+public class ElseRange
+{
+    public int StartLine;
+    public int EndLine;
+    public int JmpLine;
+
+    public ElseRange(int start, int end, int jmp)
+    {
+        StartLine = start;
+        EndLine = end;
+        JmpLine = jmp;
     }
 }
+
 public class ControlFlowTracker
 {
     private Stack<ControlBlock> _BlockStack = new Stack<ControlBlock>();
     private List<ControlBlock> _AllBlocks = new List<ControlBlock>();
-    public void BeginBlock(ControlBlockType Type, int StartLine, List<AsmLink> Links)
+    public List<ElseRange> ElseRanges = new List<ElseRange>();
+
+    public void BeginBlock(ControlBlockType type, int startLine, AsmLink link)
     {
-        ControlBlock Parent = _BlockStack.Count > 0 ? _BlockStack.Peek() : null;
-        ControlBlock Block = new ControlBlock(Type, StartLine, Links, Parent);
+        var parent = _BlockStack.Count > 0 ? _BlockStack.Peek() : null;
+        var block = new ControlBlock(type, startLine, link, parent);
 
-        if (Parent != null)
-            Parent.Children.Add(Block);
-
-        _BlockStack.Push(Block);
-        _AllBlocks.Add(Block);
+        parent?.Children.Add(block);
+        _BlockStack.Push(block);
+        _AllBlocks.Add(block);
     }
 
-    public void EndBlock(int EndLine)
+    public void EndBlock(int endLine)
     {
-        if (_BlockStack.Count == 0)
-            throw new InvalidOperationException("No control block to end.");
-
-        ControlBlock Block = _BlockStack.Pop();
-        Block.EndLine = EndLine;
+        if (_BlockStack.Count == 0) throw new InvalidOperationException("No block to end");
+        var block = _BlockStack.Pop();
+        block.EndLine = endLine;
     }
+
     public ControlBlock CurrentBlock => _BlockStack.Count > 0 ? _BlockStack.Peek() : null;
 
-    public ControlBlock GetBlockAtLine(int Line)
+    public void RegisterElse(int start, int end, int jmp)
     {
-        foreach (var Block in _AllBlocks)
-        {
-            if (Block.StartLine <= Line && Block.EndLine.HasValue && Line <= Block.EndLine.Value)
-            {
-                var Nested = GetNestedBlock(Block, Line);
-                return Nested ?? Block;
-            }
-        }
-        return null;
+        ElseRanges.Add(new ElseRange(start, end, jmp));
     }
 
-    private ControlBlock GetNestedBlock(ControlBlock Block, int LineIndex)
+    public static void IdentifyControlFlow(DecompileTracker tracker)
     {
-        foreach (var Child in Block.Children)
+        for (int i = 0; i < tracker.Lines.Count; i++)
         {
-            if (Child.StartLine <= LineIndex && Child.EndLine.HasValue && LineIndex <= Child.EndLine.Value)
+            var line = tracker.Lines[i];
+            string op = line.OPCode?.Value ?? "";
+
+
+            if (IsCompare(op) && i + 1 < tracker.Lines.Count)
             {
-                var Nested = GetNestedBlock(Child, LineIndex);
-                return Nested ?? Child;
+                var next = tracker.Lines[i + 1];
+                if (next.OPCode.Value != "jmpf") continue;
+
+                int falseTarget = (next.LineIndex + next.GetJumpTarget())-1;
+
+                bool isWhile = false;
+                for (int j = i + 2; j < falseTarget && j < tracker.Lines.Count; j++)
+                {
+                    var check = tracker.Lines[j];
+                    if (check.OPCode.Value == "jmp" && (check.LineIndex + check.GetJumpTarget())-1 <= i)
+                    {
+                        isWhile = true;
+                        break;
+                    }
+                }
+
+                if (isWhile)
+                {
+                    tracker.ControlFlows.BeginBlock(ControlBlockType.While, i, line.Links);
+                }
+                else
+                {
+                    tracker.ControlFlows.BeginBlock(ControlBlockType.If, i, line.Links);
+
+                    int prevTarget = falseTarget;
+                    if (prevTarget >= 0 && prevTarget < tracker.Lines.Count &&
+                        tracker.Lines[prevTarget].OPCode.Value == "jmp")
+                    {
+                        int elseEndTarget = (tracker.Lines[prevTarget].LineIndex + tracker.Lines[prevTarget].GetJumpTarget())-1;
+                        int actualElseEnd = Math.Min(elseEndTarget, tracker.Lines.Count - 1);
+
+                        tracker.ControlFlows.EndBlock(prevTarget);
+                        tracker.ControlFlows.RegisterElse(falseTarget, actualElseEnd, prevTarget);
+                        tracker.ControlFlows.BeginBlock(ControlBlockType.Else, falseTarget, null);
+                    }
+                    else
+                    {
+                        tracker.ControlFlows.EndBlock(falseTarget);
+                    }
+                }
+            }
+
+            if (op == "jmp")
+            {
+                int target = (line.LineIndex + line.GetJumpTarget())-1;
+                var current = tracker.ControlFlows.CurrentBlock;
+                if (current != null && current.Type == ControlBlockType.While && target <= current.StartLine)
+                {
+                    tracker.ControlFlows.EndBlock(i);
+                }
             }
         }
-        return null;
     }
+
+    public static void MarkControlFlowOutput(DecompileTracker tracker)
+    {
+        foreach (var e in tracker.ControlFlows.ElseRanges)
+        {
+            if (e.StartLine >= 0 && e.StartLine < tracker.Lines.Count)
+            {
+                var line = tracker.Lines[e.StartLine];
+                if (line.ControlFlow.Length > 0)
+                {
+                    line.ControlFlow += "\n" + "Else";
+                }
+                else
+                {
+                    line.ControlFlow = "Else";
+                }
+            }
+        }
+
+        foreach (var block in tracker.ControlFlows.GetAllBlocks())
+        {
+            if (!block.EndLine.HasValue) continue;
+            int endIdx = block.EndLine.Value;
+            if (endIdx < 0 || endIdx >= tracker.Lines.Count) continue;
+
+            string endCode = block.Type == ControlBlockType.While ? "EndWhile" : "EndIf";
+            var line = tracker.Lines[endIdx];
+            if (line.ControlFlow.Length > 0)
+            {
+                line.ControlFlow += "\n" + endCode;
+            }
+            else
+            {
+                line.ControlFlow = endCode;
+            }
+           
+        }
+    }
+
+    private static bool IsCompare(string op)
+    {
+        return op == "cmp_lt" || op == "cmp_le" ||
+               op == "cmp_gt" || op == "cmp_ge" || op == "cmp_eq";
+    }
+
     public List<ControlBlock> GetAllBlocks() => _AllBlocks;
+}
+
+#endregion
+
+public class AsmOPCode
+{
+    public string Value = "";
+    public List<PexInstructionArgument> Arguments = new List<PexInstructionArgument>();
 }
 
 public class AsmBase
 {
-    public string OPCode = "";
+    public AsmOPCode OPCode = null;
     public string PSCCode = "";
+    public string ControlFlow = "";
     public int LineIndex = 0;
     public int SpaceCount = 0;
     public AsmLink Links = new AsmLink();
@@ -1054,15 +1197,50 @@ public class AsmBase
         AsmLink.ParseLink(ref Links, Orders);
     }
 }
+
 public class AsmCode:AsmBase
 {
+    public int GetJumpTarget()
+    {
+        if (OPCode == null || OPCode.Arguments == null) return -1;
+
+        string Op = OPCode.Value;
+
+        if (Op == "jmp")
+            return ReadJumpArgument(0);   
+        else if (Op == "jmpt" || Op == "jmpf")
+            return ReadJumpArgument(1);   
+
+        return -1;
+    }
+    private int ReadJumpArgument(int Index)
+    {
+        int JumpID = 0;
+        if (OPCode.Arguments.Count <= Index)
+            JumpID = -1;
+
+        var Arg = OPCode.Arguments[Index];
+
+        if (Arg.Value == null)
+            JumpID = -1;
+
+        if (Arg.Value is int IntValue)
+            JumpID = IntValue;
+
+        int Parsed;
+        if (int.TryParse(Arg.Value.ToString(), out Parsed))
+            JumpID = Parsed;
+
+        Debug.WriteLine(JumpID);
+        return JumpID;
+    }
     public AsmCode(int LineIndex)
     { 
        this.LineIndex = LineIndex;
     }
-    public void Parse(string OPCode, List<AsmOrder> Orders)
+    public void Parse(AsmOPCode OPCode, List<AsmOrder> Orders)
     {
-        this.OPCode = OPCode.Trim().ToLower();
+        this.OPCode = OPCode;
         this.ParseLink(Orders);
     }
 
@@ -1071,7 +1249,7 @@ public class AsmCode:AsmBase
         var SetStr = string.Join(" ",
             new[]
             {
-                this.OPCode,
+                this.OPCode.Value,
                 this.Links?.GetAsmCode().Trim()
             }
             .Where(Str => !string.IsNullOrWhiteSpace(Str))
@@ -1079,6 +1257,7 @@ public class AsmCode:AsmBase
        
         return SetStr;
     }
+
     public string GetCode()
     {
         return this.PSCCode;
@@ -1110,7 +1289,7 @@ public class DecompileTracker
     public ControlFlowTracker ControlFlows = new ControlFlowTracker();
 
     public List<AsmCode> Lines = new List<AsmCode>();
-    public void CheckCode(int LineIndex,string OPCode,List<AsmOrder> Orders)
+    public void CheckCode(int LineIndex,AsmOPCode OPCode,List<AsmOrder> Orders)
     {
         AsmCode NewLine = new AsmCode(LineIndex);
         NewLine.Parse(OPCode,Orders);

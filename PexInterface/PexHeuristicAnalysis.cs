@@ -236,19 +236,19 @@ namespace PexInterface
 
                         if (SetCode.Length > 0)
                         {
+                            if (GetLine.ControlFlow.Length > 0)
+                            {
+                                SetCode = GetLine.ControlFlow + "\n" + SetCode;
+                            }
                             SetCode = PexHeuristicAnalysis.GenSpace(SpaceCount + GetLine.SpaceCount) + SetCode + GetLine.GetNote();
-                        }
-                        else
-                        {
-                            SetCode = PexHeuristicAnalysis.GenSpace(SpaceCount + GetLine.SpaceCount) + GetLine.GetAsmCode();
-                        }
 
-                        if (SetCode.EndsWith("\n"))
-                        {
-                            SetCode = SetCode.Substring(0, SetCode.Length - "\n".Length);
-                        }
+                            if (SetCode.EndsWith("\n"))
+                            {
+                                SetCode = SetCode.Substring(0, SetCode.Length - "\n".Length);
+                            }
 
-                        Content.AppendLine(SetCode);
+                            Content.AppendLine(SetCode);
+                        }
                     }
 
                     if (Style == CodeGenStyle.Papyrus)

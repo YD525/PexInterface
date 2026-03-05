@@ -1,11 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
-using static PapyrusAsmDecoder;
+using System.Text.RegularExpressions;
 using static PexInterface.PexReader;
 
 namespace PexInterface
@@ -24,300 +20,351 @@ namespace PexInterface
             }
         }
 
-   
-        public static void DeFunctionCode(CodeGenStyle Style,List<PexString> TempStrings,PscCls ParentCls,FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
+
+        public static void DeFunctionCode(CodeGenStyle Style, List<PexString> TempStrings, PscCls ParentCls, FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
         {
-//assign iSelect
-//callmethod GetSize ::aaa_RDOPreventedActorsList_var ::temp269
-//cmp_lt ::temp270 iSelect ::temp269
-//jmpf ::temp270
-//callmethod SetMenuDialogOptions self ::nonevar  ActorsPrevented
-//array_getelement ::temp269 ActorsListIndex iSelect
-//callmethod SetMenuDialogStartIndex self ::nonevar  ::temp269
-//callmethod SetMenuDialogDefaultIndex self ::nonevar
-//iadd ::temp269 iSelect
-//assign iSelect ::temp269
-//jmp 
-
-
-//Int iSelect = 0 ; 
-//While iSelect < aaa_RDOPreventedActorsList.GetSize() ; 
-//Self.SetMenuDialogOptions(ActorsPrevented) ;
-//Self.SetMenuDialogStartIndex(ActorsListIndex[iSelect]) ; 
-//Self.SetMenuDialogDefaultIndex(0) ; 
-//iSelect += 1 ; 
-//EndWhile
+            string ASMCode = "";
             if (Func.FunctionName == "OnMenuOpenST")
             {
-                if (CanSkipPscDeCode)
-                {
-                    return;
-                }
-
                 for (int i = 0; i < TrackerRef.Lines.Count; i++)
                 {
-                    var AsmLine = TrackerRef.Lines[i];
+                    ASMCode += TrackerRef.Lines[i].GetAsmCode() + "\n";
+                }
+                GC.Collect();
+            }
+            ControlFlowTracker.IdentifyControlFlow(TrackerRef);
 
-                    if (AsmLine != null)
-                    {
-                        if (AsmLine.Links != null)
-                        {
-                            var Head = AsmLine.Links.GetHead();
-                            var Tail = AsmLine.Links.GetTail();
+            if (CanSkipPscDeCode) return;
 
-                            AsmInFo CurrentInFo = null;
-                            if (Head.InFo != null)
-                            {
-                                CurrentInFo = Head.InFo;
-                            }
+            for (int i = 0; i < TrackerRef.Lines.Count; i++)
+            {
+                var AsmLine = TrackerRef.Lines[i];
+                if (AsmLine == null || AsmLine.Links == null) continue;
 
-                            switch (AsmLine.OPCode)
-                            {
-                                case "iadd":
-                                    {
-                                        string GetVariableName = Head.GetValue();
+                var Head = AsmLine.Links.GetHead();
+                var Tail = AsmLine.Links.GetTail();
 
-                                        if (TrackerRef.Variables.IsCreated(GetVariableName))
-                                        {
-                                            TrackerRef.Variables.SetType(GetVariableName, AsmVariableType.Int);
-                                        }
-                                        else
-                                        {
-                                            TrackerRef.Variables.Add(new AsmOffset(i,0),GetVariableName,0,new List<AsmLink>() { Head.Next },VariableAccess.Set);
-                                            TrackerRef.Variables.SetType(GetVariableName, AsmVariableType.Int);
-                                        }
-
-                                        //Test
-                                        if (Head.Next == null)
-                                        {
-                                            AsmLine.PSCCode = Head.GetValue() + " += 1";
-                                        }
-                                        else
-                                        {
-                                            AsmLine.PSCCode = Head.GetValue() + " = " + Head.Next.GetValue() + " += 1";
-                                        }
-                                        
-                                    }
-                                    break;
-                                case "assign":
-                                    {
-                                        string GetVariableName = Head.GetValue();
-                                        TrackerRef.Variables.Add(new AsmOffset(i, 0), GetVariableName, 0, null, VariableAccess.None);
-                                        
-                                    }
-                                    break;
-                                case "callmethod":
-                                    {
-                                        int State = 0;
-                                        AsmLine.Links.ForEachForward(new Action<AsmLink>((Link) => {
-                                            if (!Link.IsNull() && !Link.IsSelf())
-                                            {
-                                                State++;
-                                            }
-                                        }));
-                                        var GetFunctionName = Head.GetValue();
-                                        TrackerRef.Variables.Add(new AsmOffset(i, 0), GetFunctionName, State, null, VariableAccess.None);
-
-                                        if (State == 3)
-                                        {
-                                            string GetVariableName = Tail.GetValue();
-
-                                            //Test
-                                            AsmLine.PSCCode = GetVariableName + " = " + Tail.Prev.GetValue() + "." + GetFunctionName + "();";
-
-                                            if (Tail.Prev.InFo != null)
-                                            {
-                                                if (Tail.Prev.InFo.Variable != null)
-                                                {
-                                                    var GetName = TempStrings[Tail.Prev.InFo.Variable.NameIndex];
-                                                    var GetType = TempStrings[Tail.Prev.InFo.Variable.TypeNameIndex];
-                                                }
-                                               
-                                            }
-
-                                            TrackerRef.Variables.Add(new AsmOffset(i, 2), GetVariableName, State, new List<AsmLink>() {
-                                                Tail.Prev,
-                                                Head
-                                            }, VariableAccess.Set);
-                                        }
-                                    }
-                                    break;
-                            }
-                        }
-                    }
+                if (AsmLine.PSCCode.Length > 0)
+                { 
+                
                 }
 
-                //for (int i = 0; i < Keys.Count; i++)
-                //{
-                //    var Key = Keys[i];
-                //    var Track = TrackerRef.Tracks[Key].TrackRef;
+                switch (AsmLine.OPCode.Value)
+                {
+                    case "assign":
+                        {
+                            string VarName = Head.GetValue();
+                            TrackerRef.Variables.Add(new AsmOffset(i, 0), VarName, 0, null, VariableAccess.None);
 
-                //    string GetCodeLine = TrackerRef.Tracks[Keys[i]].Assembly;
+                            if (Head.Next == null)
+                            {
+                                AsmLine.PSCCode = string.Format("{0} = 0", VarName);
+                            }
+                            else
+                            {
+                                string RhsRaw = Head.Next.GetValue();
 
-                //    if (Track is TVariable)
-                //    {
-                //        var Variable = (TVariable)Track;
+                                if (RhsRaw.StartsWith("temp"))
+                                {
+                                    for (int j = i - 1; j >= 0; j--)
+                                    {
+                                        var PrevLine = TrackerRef.Lines[j];
+                                        if (PrevLine.OPCode.Value != "iadd") continue;
 
-                //        var Get = TrackerRef.QueryMethodVariable(Variable.VariableName);
-                //        if (Get == "" && Variable.VariableName.Length > 0)
-                //        {
-                //            var GlobalVariable = ParentCls.QueryGlobalVariable(Variable.VariableName);
-                //            if (GlobalVariable == null)
-                //            {
-                //                var AutoVariable = ParentCls.QueryAutoGlobalVariable(Variable.VariableName);
+                                        var PrevHead = PrevLine.Links.GetHead();
+                                        if (PrevHead.GetValue() != RhsRaw) continue;
 
-                //                if (AutoVariable == null)
-                //                {
-                //                    TempVariables.Add(new TempVariable(Variable.VariableName, i));
-                //                }
-                //                else
-                //                {
-                                  
-                //                }
-                //            }
-                //            else
-                //            {
-                               
-                //            }
-                //        }
-                //        else
-                //        { 
-                        
-                //        }
-                //    }
-                //    else
-                //    if (Track is AsmCall)
-                //    {
+                                        string Src = PrevHead.Next?.GetValue() ?? "?";
+                                        string Amount = PrevHead.Next?.Next?.GetValue() ?? "1";
 
-                //        //callmethod GetSize ::aaa_RDOPreventedActorsList_var ::temp269
+                                        PrevLine.PSCCode = "";
 
-                //        //While iSelect<aaa_RDOPreventedActorsList.GetSize() ;
+                                        if (Src == VarName)
+                                            AsmLine.PSCCode = string.Format("{0} += {1};", VarName, Amount);
+                                        else
+                                            AsmLine.PSCCode = string.Format("{0} = {1} + {2};", VarName, Src, Amount);
+                                        goto AssignDone;
+                                    }
+                                }
 
-                //        //callmethod SetMenuDialogStartIndex self::nonevar ::temp269
-                //        //Self.SetMenuDialogStartIndex(ActorsListIndex[iSelect]) ; 
-                //        //SetMenuDialogStartIndex(temp269);
+                                AsmLine.PSCCode = string.Format("{0} = {1}", VarName, RhsRaw);
+                                AssignDone:;
+                            }
+                            break;
+                        }
 
-                //        string PscCode = "";
-                //        var Function = (AsmCall)Track;
-                //        if (Function.Links.HaveValue())
-                //        {
-                //            if (Function.OPCode.Equals("callmethod"))
-                //            {
-                //                //int Index = 0;
-                //                //bool Self = false;
-                //                //string Params = "";
+                    case "callmethod":
+                        {
+                            string FuncName = Head.GetValue();
+                            var CallerNode = Head.Next;
+                            string Caller = (CallerNode != null && CallerNode.IsSelf())
+                                                ? "Self" : (CallerNode?.GetValue() ?? "Self");
 
-                //                //Function.Links.ForEachForward(new Action<AsmLink>((LinkItem) =>
-                //                //{
-                //                //    if (LinkItem.Value.StartsWith("::"))
-                //                //    {
-                //                //        if (!Self)
-                //                //        {
-                //                //            if (!LinkItem.IsNull())
-                //                //            {
-                //                //                if (!LinkItem.IsVar())
-                //                //                {
-                //                //                    PscCode = Function.Call + "." + LinkItem.GetValue() + "()";
-                //                //                }
-                //                //                else
-                //                //                {
-                //                //                    PscCode = LinkItem.GetValue() + "." + Function.Call + "()";
-                //                //                }
+                            var ReturnNode = CallerNode?.Next;
+                            string ReturnVar = ReturnNode?.GetValue() ?? "";
 
-                //                //                if ((LinkItem.Prev != null && !LinkItem.Prev.IsNull()) && PscCode.Length > 0)
-                //                //                {
-                //                //                    PscCode = LinkItem.Value + "&" + PscCode;
-                //                //                }
+                            var Params = new List<string>();
+                            var Node = ReturnNode?.Next;
+                            while (Node != null)
+                            {
+                                if (!Node.IsNull()) Params.Add(Node.GetValue());
+                                Node = Node.Next;
+                            }
+                            string ParamStr = string.Join(", ", Params);
+                            string CallExpr = string.Format("{0}.{1}({2})", Caller, FuncName, ParamStr);
 
-                //                //                if (Style == CodeGenStyle.CSharp)
-                //                //                {
-                //                //                    PscCode += ";";
-                //                //                }
-                //                //            }
-                //                //        }
-                //                //        else
-                //                //        {
-                //                //            if (!LinkItem.IsNull())
-                //                //            {
-                //                //                Params += LinkItem.GetValue() + ",";
-                //                //            }
-                //                //        }
-                //                //    }
+                            if (ReturnNode == null || ReturnNode.IsNull())
+                                AsmLine.PSCCode = CallExpr + ";";
+                            else
+                                AsmLine.PSCCode = string.Format("{0} = {1};", ReturnVar, CallExpr);
 
-                //                //    if (LinkItem.IsSelf())
-                //                //    {
-                //                //        Self = true;
-                //                //    }
+                            TrackerRef.Variables.Add(new AsmOffset(i, 2), ReturnVar, 0,
+                                new List<AsmLink>() { CallerNode, Head }, VariableAccess.Set);
+                            break;
+                        }
 
-                //                //    Index++;
-                //                //}));
+                    case "iadd":
+                        {
+                            string Dest = Head.GetValue();
+                            string Src = Head.Next?.GetValue() ?? "?";
+                            string Amount = Head.Next?.Next?.GetValue() ?? "1";
 
-                //                //if (Params.Length > 0)
-                //                //{
-                //                //    if (Params.EndsWith(","))
-                //                //    {
-                //                //        Params = Params.Substring(0, Params.Length - ",".Length);
-                //                //    }
+                            if (Dest == Src)
+                            {
+                                AsmLine.PSCCode = string.Format("{0} += {1};", Dest, Amount);
 
-                //                //    PscCode = Function.Call + "(" + Params + ")";
+                                if (!TrackerRef.Variables.IsCreated(Dest))
+                                    TrackerRef.Variables.Add(new AsmOffset(i, 0), Dest, 0, null, VariableAccess.Set);
 
-                //                //    if (Style == CodeGenStyle.CSharp)
-                //                //    {
-                //                //        PscCode += ";";
-                //                //    }
-                //                //}
+                                TrackerRef.Variables.SetType(TrackerRef, Dest, AsmVariableType.Int);
+                            }
+                            else
+                            {
+                                AsmLine.PSCCode = string.Format("{0} = {1} + {2};", Dest, Src, Amount);
 
-                //                //Function.PSCCode = PscCode;
-                //            }
-                //        }
-                //        else
-                //        { 
-                        
-                //        }
-                //    }
-                //    else
-                //    if (Track is TProp)
-                //    {
+                                if (!TrackerRef.Variables.IsCreated(Dest))
+                                TrackerRef.Variables.Add(new AsmOffset(i, 0), Src, 0, null, VariableAccess.Set);
 
-                //    }
-                //    else
-                //    if (Track is TStrcat)
-                //    {
+                                TrackerRef.Variables.SetType(TrackerRef, Dest, AsmVariableType.Int);
+                                TrackerRef.Variables.SetType(TrackerRef, Src, AsmVariableType.Int);
+                            }
 
-                //    }
-                //    else
-                //    if (Track is TOperator)
-                //    {
+                            break;
+                        }
 
-                //    }
-                //    else
-                //    if (Track is TJump)
-                //    {
+                    case "isub":
+                        {
+                            string VarName = Head.GetValue();
+                            string Operand = Head.Next != null ? Head.Next.GetValue() : "1";
+                            AsmLine.PSCCode = string.Format("{0} -= {1}", VarName, Operand);
+                            break;
+                        }                  
+                    case "return":
+                        {
+                            if (Head.IsNull())
+                                AsmLine.PSCCode = "Return";
+                            else
+                                AsmLine.PSCCode = string.Format("Return {0}", Head.GetValue());
+                            break;
+                        }
 
-                //    }
-                //    else
-                //    if (Track is TValIncrease)
-                //    {
+                    case "not":
+                        {
+                            string RetVar = Head.GetValue();
+                            string Operand = Head.Next?.GetValue() ?? "?";
+                            AsmLine.PSCCode = string.Format("{0} = !{1}", RetVar, Operand);
+                            break;
+                        }
+                    case "callstatic":
+                        {
+                            //utility IsInMenuMode::temp332//callstatic utility IsInMenuMode::temp332
+                            AsmLine.PSCCode = AsmLine.GetAsmCode();
+                        }
+                        break;
 
-                //    }
-                //    else
-                //    if (Track is TReturn)
-                //    {
-
-                //    }
-                //    else
-                //    if (Track is TArrayOP)
-                //    {
-
-                //    }
-                //    else
-                //    if (Track is TVariableSetter)
-                //    {
-
-                //    }
-                //}
+                    case "cmp_lt":
+                    case "cmp_le":
+                    case "cmp_gt":
+                    case "cmp_ge":
+                    case "cmp_eq":
+                    case "jmpf":
+                    case "jmpt":
+                    case "jmp":
+                        break;
+                    default:
+                        AsmLine.PSCCode = AsmLine.GetAsmCode();
+                    break;
+                }
             }
-          
+
+            ControlFlowTracker.MarkControlFlowOutput(TrackerRef);
+
+           
+
+            for (int i = 0; i < TrackerRef.Lines.Count; i++)
+            {
+                var AsmLine = TrackerRef.Lines[i];
+
+                if (AsmLine.PSCCode.Contains("ELSE"))
+                {
+
+                }
+
+                if (AsmLine == null) continue;
+
+                string Op = AsmLine.OPCode.Value;
+
+                var WhileBlock = FindBlockStartAt(TrackerRef, i, ControlBlockType.While);
+                if (WhileBlock != null)
+                {
+                    var Head = AsmLine.Links.GetHead();
+                    string CondLeft = Head.Next?.GetValue() ?? "?";
+                    string CondRight = TryResolveTemp(TrackerRef, i,
+                                           Head.Next?.Next?.GetValue() ?? "?", TempStrings);
+                    if (string.IsNullOrEmpty(AsmLine.PSCCode))
+                    {
+                        AsmLine.PSCCode = string.Format("While {0} {1} {2}", CondLeft, CmpOp(Op), CondRight);
+                    }
+                    if (i + 1 < TrackerRef.Lines.Count)
+                        TrackerRef.Lines[i + 1].PSCCode = "";
+                    continue;
+                }
+
+                if (Op == "jmp")
+                {
+                    var WBlock = FindWhileEndAt(TrackerRef, i);
+                    if (WBlock != null)
+                    {
+                        AsmLine.PSCCode = "EndWhile";
+                        continue;
+                    }
+                    AsmLine.PSCCode = "";
+                    continue;
+                }
+
+                var IfBlock = FindBlockStartAt(TrackerRef, i, ControlBlockType.If);
+                if (IfBlock != null)
+                {
+                    var Head = AsmLine.Links.GetHead();
+                    string CondLeft = Head.Next?.GetValue() ?? "?";
+                    string CondRight = TryResolveTemp(TrackerRef, i,
+                                           Head.Next?.Next?.GetValue() ?? "?", TempStrings);
+                    if (string.IsNullOrEmpty(AsmLine.PSCCode))
+                    {
+                        AsmLine.PSCCode = string.Format("If {0} {1} {2}", CondLeft, CmpOp(Op), CondRight);
+                    }
+                    if (i + 1 < TrackerRef.Lines.Count)
+                        TrackerRef.Lines[i + 1].PSCCode = "";
+                    continue;
+                }
+            }
+
+            for (int i = 0; i < TrackerRef.Lines.Count; i++)
+            {
+                var AsmLine = TrackerRef.Lines[i];
+                if (string.IsNullOrEmpty(AsmLine?.PSCCode)) continue;
+
+                string Code = AsmLine.PSCCode;
+                int EqPos = Code.IndexOf('=');
+
+                if (EqPos >= 0)
+                {
+                    string Left = Code.Substring(0, EqPos + 1);
+                    string Right = Code.Substring(EqPos + 1);
+                    Right = Regex.Replace(Right, @"\btemp\d+\b", m =>
+                        TryResolveTemp(TrackerRef, i, m.Value, TempStrings));
+                    AsmLine.PSCCode = Left + Right;
+                }
+                else
+                {
+                    AsmLine.PSCCode = Regex.Replace(Code, @"\btemp\d+\b", m =>
+                        TryResolveTemp(TrackerRef, i, m.Value, TempStrings));
+                }
+            }
+        }
+
+        static ControlBlock FindBlockStartAt(DecompileTracker Tracker, int LineIndex, ControlBlockType Type)
+        {
+            foreach (var Block in Tracker.ControlFlows.GetAllBlocks())
+                if (Block.Type == Type && Block.StartLine == LineIndex)
+                    return Block;
+            return null;
+        }
+
+        static ControlBlock FindWhileEndAt(DecompileTracker Tracker, int LineIndex)
+        {
+            foreach (var Block in Tracker.ControlFlows.GetAllBlocks())
+                if (Block.Type == ControlBlockType.While && Block.EndLine == LineIndex)
+                    return Block;
+            return null;
+        }
+        static string TryResolveTemp(DecompileTracker Tracker, int FromLine,
+                                string TempName, List<PexString> TempStrings)
+        {
+            if (!TempName.StartsWith("temp")) return TempName;
+
+            for (int j = FromLine - 1; j >= 0; j--)
+            {
+                var L = Tracker.Lines[j];
+
+                if (L.OPCode.Value == "callmethod")
+                {
+                    var LHead = L.Links.GetHead();
+                    var CallerNode = LHead.Next;
+                    var ReturnNode = CallerNode?.Next;
+
+                    if (ReturnNode == null) continue;
+                    if (ReturnNode.GetValue() != TempName) continue;
+
+                    L.PSCCode = "";
+
+                    string FuncName = LHead.GetValue();
+                    string CallerRaw = CallerNode?.GetValue() ?? "Self";
+                    string Caller = (CallerNode != null && CallerNode.IsSelf())
+                                       ? "Self"
+                                       : TryResolveTemp(Tracker, j, CallerRaw, TempStrings);
+
+                    if (Caller.EndsWith("_var"))
+                        Caller = Caller.Substring(0, Caller.Length - "_var".Length);
+
+                    var Params = new List<string>();
+                    var Node = ReturnNode.Next;
+                    while (Node != null)
+                    {
+                        if (!Node.IsNull())
+                            Params.Add(TryResolveTemp(Tracker, j, Node.GetValue(), TempStrings));
+                        Node = Node.Next;
+                    }
+                    string ParamStr = string.Join(", ", Params);
+                    return string.Format("{0}.{1}({2})", Caller, FuncName, ParamStr);
+                }
+
+                if (L.OPCode.Value == "array_getelement")
+                {
+                    var LHead = L.Links.GetHead();
+                    if (LHead.GetValue() != TempName) continue;
+
+                    L.PSCCode = "";  
+
+                    string ArrName = TryResolveTemp(Tracker, j, LHead.Next?.GetValue() ?? "?", TempStrings);
+                    string ArrIdx = TryResolveTemp(Tracker, j, LHead.Next?.Next?.GetValue() ?? "?", TempStrings);
+
+                    return string.Format("{0}[{1}]", ArrName, ArrIdx);
+                }
+            }
+            return TempName;
+        }
+        static string CmpOp(string OpCode)
+        {
+            switch (OpCode)
+            {
+                case "cmp_lt": return "<";
+                case "cmp_le": return "<=";
+                case "cmp_gt": return ">";
+                case "cmp_ge": return ">=";
+                case "cmp_eq": return "==";
+                default: return "?";
+            }
         }
     }
 }
