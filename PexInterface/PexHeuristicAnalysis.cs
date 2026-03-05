@@ -232,22 +232,26 @@ namespace PexInterface
 
                     foreach (var GetLine in GetFunc.TracksRef.Lines)
                     {
-                        string SetCode = GetLine.GetCode();
+                        string SetCode = GetLine.PSCCode;
+                        if (string.IsNullOrEmpty(SetCode)) continue;
 
-                        if (SetCode.Length > 0)
+                        string[] subLines = SetCode.Split(
+                            new[] { "\r\n", "\n" },
+                            StringSplitOptions.RemoveEmptyEntries);
+
+                        for (int si = 0; si < subLines.Length; si++)
                         {
-                            if (GetLine.ControlFlow.Length > 0)
-                            {
-                                SetCode = GetLine.ControlFlow + "\n" + SetCode;
-                            }
-                            SetCode = PexHeuristicAnalysis.GenSpace(SpaceCount + GetLine.SpaceCount) + SetCode + GetLine.GetNote();
+                            string sub = subLines[si];
+                            if (string.IsNullOrWhiteSpace(sub)) continue;
 
-                            if (SetCode.EndsWith("\n"))
-                            {
-                                SetCode = SetCode.Substring(0, SetCode.Length - "\n".Length);
-                            }
+                            // Basic indentation of function body (level 2 = 8 spaces)
+                            string outputLine = PexHeuristicAnalysis.GenSpace(2) + sub;
 
-                            Content.AppendLine(SetCode);
+                            // Optional assembly comment on the last line
+                            //if (si == subLines.Length - 1)
+                            //    outputLine += GetLine.GetNote();
+
+                            Content.AppendLine(outputLine);
                         }
                     }
 

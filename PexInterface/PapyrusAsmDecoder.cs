@@ -40,7 +40,7 @@ public class PapyrusAsmDecoder
         return Number;
     }
 
-    public static string Version = "1.0.2 Alpha";
+    public static string Version = "1.0.3 Beta";
     public PexReader Reader;
 
     public PapyrusAsmDecoder(PexReader CurrentReader)
@@ -310,72 +310,91 @@ public class PapyrusAsmDecoder
                         foreach (var GetArg in GetInstruction.Arguments)
                         {
                             AsmOrder Order = null;
-                            var GetIndex = ObjToInt(GetArg.Value);
-                            if (GetIndex > 0)
+
+                            if (GetArg.Type == 3) // integer literal
                             {
-                                if (GetArg.Type == 3)
+                                Orders.Add(new AsmOrder(GetArg.Value?.ToString() ?? "0"));
+                                continue;
+                            }
+                            if (GetArg.Type == 4) // float literal
+                            {
+                                Orders.Add(new AsmOrder(GetArg.Value?.ToString() ?? "0.0"));
+                                continue;
+                            }
+                            if (GetArg.Type == 5) // bool literal
+                            {
+                                Orders.Add(new AsmOrder(GetArg.Value is bool B && B ? "True" : "False"));
+                                continue;
+                            }
+                            if (GetArg.Type == 0) // null
+                            {
+                                Orders.Add(new AsmOrder("None"));
+                                continue;
+                            }
+
+                            var GetIndex = ObjToInt(GetArg.Value);
+                            if (GetIndex < 0)
+                            {
+                                continue;
+                            }
+
+                            var GetObj = TempStrings[GetIndex];
+
+                            var ChildType = ObjType.Null;
+                            var GetChildFunc = QueryAnyByID(GetObj.Index, ref ChildType);
+
+                            if (ChildType == ObjType.Functions)
+                            {
+                                var Functions = GetChildFunc as List<PexFunction>;
+                                if (Functions.Count > 0)
                                 {
-
-                                }
-                                else
-                                {
-                                    var GetObj = TempStrings[GetIndex];
-
-                                    var ChildType = ObjType.Null;
-                                    var GetChildFunc = QueryAnyByID(GetObj.Index, ref ChildType);
-
-                                    if (ChildType == ObjType.Functions)
-                                    {
-                                        var Functions = GetChildFunc as List<PexFunction>;
-                                        if (Functions.Count > 0)
-                                        {
-                                            PexFunc = Functions[0];
-                                        }
-                                    }
-                                    else
-                                    {
-
-                                    }
-
-                                    Order = new AsmOrder(GetObj.Value.Trim());
-
-                                    ObjType VariableType = ObjType.Null;
-                                    var GetVariable = QueryAnyByID(GetObj.Index, ref VariableType);
-                                    if (GetVariable != null)
-                                    {
-                                        if (VariableType == ObjType.Variables)
-                                        {
-                                            PexVariable Variable = GetVariable as PexVariable;
-                                            Order.InFo = new AsmInFo();
-                                            Order.InFo.Variable = Variable;
-                                        }
-                                       
-                                        if (VariableType == ObjType.Functions)
-                                        {
-                                            PexFunction Func = GetVariable as PexFunction;
-                                            Order.InFo = new AsmInFo();
-                                            Order.InFo.Function = Func;
-                                        }
-                                        
-                                        if (VariableType == ObjType.Properties)
-                                        {
-                                            PexProperty Property = GetVariable as PexProperty;
-                                            Order.InFo = new AsmInFo();
-                                            Order.InFo.Property = Property;
-                                        }
-                                    }
-                                }
-
-                                if (Order != null)
-                                {
-                                    if (GetArg.Type == 2)
-                                    {
-                                        Order.Value = "\"" + Order.Value + "\"";
-                                    }
-
-                                    Orders.Add(Order);
+                                    PexFunc = Functions[0];
                                 }
                             }
+                            else
+                            {
+
+                            }
+
+                            Order = new AsmOrder(GetObj.Value.Trim());
+
+                            ObjType VariableType = ObjType.Null;
+                            var GetVariable = QueryAnyByID(GetObj.Index, ref VariableType);
+                            if (GetVariable != null)
+                            {
+                                if (VariableType == ObjType.Variables)
+                                {
+                                    PexVariable Variable = GetVariable as PexVariable;
+                                    Order.InFo = new AsmInFo();
+                                    Order.InFo.Variable = Variable;
+                                }
+
+                                if (VariableType == ObjType.Functions)
+                                {
+                                    PexFunction Func = GetVariable as PexFunction;
+                                    Order.InFo = new AsmInFo();
+                                    Order.InFo.Function = Func;
+                                }
+
+                                if (VariableType == ObjType.Properties)
+                                {
+                                    PexProperty Property = GetVariable as PexProperty;
+                                    Order.InFo = new AsmInFo();
+                                    Order.InFo.Property = Property;
+                                }
+                            }
+
+                            if (Order != null)
+                            {
+                                if (GetArg.Type == 2)
+                                {
+                                    Order.Value = "\"" + Order.Value + "\"";
+                                }
+
+                                Orders.Add(Order);
+                            }
+
+                            
                         }
                         Tracker.CheckCode(LineIndex,OPCode, Orders);
                         LineIndex++;
@@ -543,6 +562,10 @@ public class AsmLink
             if (SetValue.EndsWith("_var"))
             {
                 SetValue = SetValue.Substring(0, SetValue.Length - "_var".Length);
+            }
+            if (SetValue.Equals("none"))
+            {
+                SetValue = "null";
             }
             return SetValue;
         }
@@ -963,11 +986,6 @@ public class VariableTracker
         if (_Variables.ContainsKey(Variable))
         {
             _Variables[Variable].Type = Type;
-            int ID = GetStartByVarCreated(Variable, 0);
-            if (ID >= 0)
-            {
-                Tracker.Lines[ID].PSCCode = Type.ToString() + " " + Tracker.Lines[ID].PSCCode;
-            }
         }
     }
 
@@ -990,193 +1008,6 @@ public class VariableTracker
     }
 }
 
-#region ControlFlow
-
-public enum ControlBlockType
-{
-    If,
-    Else,
-    While
-}
-
-public class ControlBlock
-{
-    public ControlBlockType Type;
-    public int StartLine;
-    public int? EndLine;
-    public AsmLink Links;
-    public ControlBlock Parent;
-    public List<ControlBlock> Children = new List<ControlBlock>();
-
-    public ControlBlock(ControlBlockType type, int startLine, AsmLink links, ControlBlock parent = null)
-    {
-        Type = type;
-        StartLine = startLine;
-        Links = links;
-        Parent = parent;
-        EndLine = null;
-    }
-
-    public int Depth => Parent != null ? Parent.Depth + 1 : 0;
-}
-
-public class ElseRange
-{
-    public int StartLine;
-    public int EndLine;
-    public int JmpLine;
-
-    public ElseRange(int start, int end, int jmp)
-    {
-        StartLine = start;
-        EndLine = end;
-        JmpLine = jmp;
-    }
-}
-
-public class ControlFlowTracker
-{
-    private Stack<ControlBlock> _BlockStack = new Stack<ControlBlock>();
-    private List<ControlBlock> _AllBlocks = new List<ControlBlock>();
-    public List<ElseRange> ElseRanges = new List<ElseRange>();
-
-    public void BeginBlock(ControlBlockType type, int startLine, AsmLink link)
-    {
-        var parent = _BlockStack.Count > 0 ? _BlockStack.Peek() : null;
-        var block = new ControlBlock(type, startLine, link, parent);
-
-        parent?.Children.Add(block);
-        _BlockStack.Push(block);
-        _AllBlocks.Add(block);
-    }
-
-    public void EndBlock(int endLine)
-    {
-        if (_BlockStack.Count == 0) throw new InvalidOperationException("No block to end");
-        var block = _BlockStack.Pop();
-        block.EndLine = endLine;
-    }
-
-    public ControlBlock CurrentBlock => _BlockStack.Count > 0 ? _BlockStack.Peek() : null;
-
-    public void RegisterElse(int start, int end, int jmp)
-    {
-        ElseRanges.Add(new ElseRange(start, end, jmp));
-    }
-
-    public static void IdentifyControlFlow(DecompileTracker tracker)
-    {
-        for (int i = 0; i < tracker.Lines.Count; i++)
-        {
-            var line = tracker.Lines[i];
-            string op = line.OPCode?.Value ?? "";
-
-
-            if (IsCompare(op) && i + 1 < tracker.Lines.Count)
-            {
-                var next = tracker.Lines[i + 1];
-                if (next.OPCode.Value != "jmpf") continue;
-
-                int falseTarget = (next.LineIndex + next.GetJumpTarget())-1;
-
-                bool isWhile = false;
-                for (int j = i + 2; j < falseTarget && j < tracker.Lines.Count; j++)
-                {
-                    var check = tracker.Lines[j];
-                    if (check.OPCode.Value == "jmp" && (check.LineIndex + check.GetJumpTarget())-1 <= i)
-                    {
-                        isWhile = true;
-                        break;
-                    }
-                }
-
-                if (isWhile)
-                {
-                    tracker.ControlFlows.BeginBlock(ControlBlockType.While, i, line.Links);
-                }
-                else
-                {
-                    tracker.ControlFlows.BeginBlock(ControlBlockType.If, i, line.Links);
-
-                    int prevTarget = falseTarget;
-                    if (prevTarget >= 0 && prevTarget < tracker.Lines.Count &&
-                        tracker.Lines[prevTarget].OPCode.Value == "jmp")
-                    {
-                        int elseEndTarget = (tracker.Lines[prevTarget].LineIndex + tracker.Lines[prevTarget].GetJumpTarget())-1;
-                        int actualElseEnd = Math.Min(elseEndTarget, tracker.Lines.Count - 1);
-
-                        tracker.ControlFlows.EndBlock(prevTarget);
-                        tracker.ControlFlows.RegisterElse(falseTarget, actualElseEnd, prevTarget);
-                        tracker.ControlFlows.BeginBlock(ControlBlockType.Else, falseTarget, null);
-                    }
-                    else
-                    {
-                        tracker.ControlFlows.EndBlock(falseTarget);
-                    }
-                }
-            }
-
-            if (op == "jmp")
-            {
-                int target = (line.LineIndex + line.GetJumpTarget())-1;
-                var current = tracker.ControlFlows.CurrentBlock;
-                if (current != null && current.Type == ControlBlockType.While && target <= current.StartLine)
-                {
-                    tracker.ControlFlows.EndBlock(i);
-                }
-            }
-        }
-    }
-
-    public static void MarkControlFlowOutput(DecompileTracker tracker)
-    {
-        foreach (var e in tracker.ControlFlows.ElseRanges)
-        {
-            if (e.StartLine >= 0 && e.StartLine < tracker.Lines.Count)
-            {
-                var line = tracker.Lines[e.StartLine];
-                if (line.ControlFlow.Length > 0)
-                {
-                    line.ControlFlow += "\n" + "Else";
-                }
-                else
-                {
-                    line.ControlFlow = "Else";
-                }
-            }
-        }
-
-        foreach (var block in tracker.ControlFlows.GetAllBlocks())
-        {
-            if (!block.EndLine.HasValue) continue;
-            int endIdx = block.EndLine.Value;
-            if (endIdx < 0 || endIdx >= tracker.Lines.Count) continue;
-
-            string endCode = block.Type == ControlBlockType.While ? "EndWhile" : "EndIf";
-            var line = tracker.Lines[endIdx];
-            if (line.ControlFlow.Length > 0)
-            {
-                line.ControlFlow += "\n" + endCode;
-            }
-            else
-            {
-                line.ControlFlow = endCode;
-            }
-           
-        }
-    }
-
-    private static bool IsCompare(string op)
-    {
-        return op == "cmp_lt" || op == "cmp_le" ||
-               op == "cmp_gt" || op == "cmp_ge" || op == "cmp_eq";
-    }
-
-    public List<ControlBlock> GetAllBlocks() => _AllBlocks;
-}
-
-#endregion
-
 public class AsmOPCode
 {
     public string Value = "";
@@ -1196,6 +1027,7 @@ public class AsmBase
     {
         AsmLink.ParseLink(ref Links, Orders);
     }
+
 }
 
 public class AsmCode:AsmBase
@@ -1257,36 +1089,15 @@ public class AsmCode:AsmBase
        
         return SetStr;
     }
-
-    public string GetCode()
-    {
-        return this.PSCCode;
-    }
     public string GetNote()
     {
         return "//" + GetAsmCode();
     }
-
-    ///// <summary>
-    ///// XXX = Func() I need to know if Temp has been created.If it weren't for this, it should be equal to.
-    ///// </summary>
-    //public void FindVariableLink()
-    //{
-    //    if (Call.Length > 0)
-    //    {
-    //        if (this.Links.Tail.IsTemp())
-    //        {
-    //            this.VariableLink = this.Links.Tail.GetValue();
-    //            this.Links.Tail.Remove();
-    //        }
-    //    }
-    //}
   
 }
 public class DecompileTracker
 {
     public VariableTracker Variables = new VariableTracker();
-    public ControlFlowTracker ControlFlows = new ControlFlowTracker();
 
     public List<AsmCode> Lines = new List<AsmCode>();
     public void CheckCode(int LineIndex,AsmOPCode OPCode,List<AsmOrder> Orders)
@@ -1294,55 +1105,5 @@ public class DecompileTracker
         AsmCode NewLine = new AsmCode(LineIndex);
         NewLine.Parse(OPCode,Orders);
         Lines.Add(NewLine);
-
-        //if (OPCode == "return")
-        //{
-           
-        //}
-        //else
-        //if (OPCode == "callmethod" || OPCode == "callparent" || OPCode == "callstatic")
-        //{
-           
-        //}
-        //else
-        //if (OPCode == "assign")
-        //{
-           
-        //}
-        //else
-        //if (OPCode == "cast")
-        //{
-           
-        //}
-        //else
-        //if (OPCode == "propget" || OPCode == "propset")
-        //{
-           
-        //}
-        //else
-        //if (OPCode == "strcat")
-        //{
-           
-        //}
-        //else
-        //if (OPCode == "cmp_eq" || OPCode == "cmp_lt" || OPCode == "cmp_le" || OPCode == "cmp_gt" || OPCode == "cmp_ge" || OPCode == "not" || OPCode == "isub")
-        //{
-           
-        //}
-        //else
-        //if (OPCode == "jmpt" || OPCode == "jmpf" || OPCode == "jmp")
-        //{
-           
-        //}
-        //else
-        //if (OPCode == "iadd")
-        //{
-            
-        //}
-        //else
-        //if (OPCode == "array_create" || OPCode == "array_setelement" || OPCode == "array_getelement" || OPCode == "array_length")
-        //{
-          
-        //}
     }
 }
