@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Runtime.Remoting.Messaging;
 using System.Text;
+using static PexInterface.PexHeuristicAnalysis;
 using static PexInterface.PexReader;
 
 namespace PexInterface
@@ -10,30 +11,38 @@ namespace PexInterface
     // Licensed under the LGPL3.0 License.
     // See LICENSE file in the project root for full license information.
 
-    public class StringsReadResult
+    public class PexAnalysisPipeline
     {
         public PexHeuristicAnalysis HeuristicCore = null;
-        public StringsReadResult(PexHeuristicAnalysis HeuristicCore)
+        public PexAnalysisPipeline(PexHeuristicAnalysis HeuristicCore)
         { 
             this.HeuristicCore = HeuristicCore;
         }
-        public StringsReadResult OutPut()
+        public PexAnalysisPipeline ReadStrings()
         {
+            this.HeuristicCore.ReadStrings();
             return this;
         }
-        public StringsReadResult AnalysisStrings()
+
+        public PexAnalysisPipeline GetStrings(out List<PexStringItem> StringsRef)
+        {
+            StringsRef = this.HeuristicCore.Strings;
+            return this;
+        }
+        public PexAnalysisPipeline AnalysisStrings()
         {
             HeuristicCore.AnalysisStrings();
             return this;
         }
-        public StringsReadResult GetPsc(ref string Psc)
+        public PexAnalysisPipeline GetPsc(out string Psc,bool ShowNode)
         {
-            Psc = HeuristicCore.GetPsc();
+            Psc = HeuristicCore.GetPsc(ShowNode);
             return this;
         }
     }
     public class PexHeuristicAnalysis
     {
+
         public static string Version = "1.0.1 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
@@ -58,6 +67,8 @@ namespace PexInterface
         //"ConsoleLog", "consoleLog",
         //};
 
+        public PexAnalysisPipeline Core = null;
+
         public PapyrusAsmDecoder AsmDecoder = null;
 
 
@@ -81,7 +92,7 @@ namespace PexInterface
             this.AsmDecoder = Decoder;
             Strings.Clear();
             CurrentCls = SetClass;
-
+            this.Core = new PexAnalysisPipeline(this);
             Init();
         }
 
@@ -122,7 +133,7 @@ namespace PexInterface
             FuncNameCheck.Add(new FunctionCheck("RandomExpressionByTag", 0, false, ApiType.FrameworkApi, -1, "SexLab Api", "", true));
             FuncNameCheck.Add(new FunctionCheck("SendDeviceEvent", 0, false, ApiType.FrameworkApi, -1, "DD Api", "", true));
         }
-        public string GetPsc(CodeGenStyle Style = CodeGenStyle.CSharp)
+        public string GetPsc(bool ShowNote,CodeGenStyle Style = CodeGenStyle.CSharp)
         {
             StringBuilder Content = new StringBuilder();
 
@@ -276,9 +287,12 @@ namespace PexInterface
                             // Basic indentation of function body (level 2 = 8 spaces)
                             string outputLine = PexHeuristicAnalysis.GenSpace(2) + sub;
 
-                            // Optional assembly comment on the last line
-                            if (si == subLines.Length - 1)
-                                outputLine += GetLine.GetNote();
+                            if (ShowNote)
+                            {
+                                // Optional assembly comment on the last line
+                                if (si == subLines.Length - 1)
+                                    outputLine += GetLine.GetNote();
+                            }
 
                             Content.AppendLine(outputLine);
                         }
@@ -300,7 +314,7 @@ namespace PexInterface
             return Content.ToString();
         }
 
-        public StringsReadResult ReadStrings()
+        public void ReadStrings()
         {
             this.Strings.Clear();
 
@@ -314,7 +328,6 @@ namespace PexInterface
                     this.Strings.Add(new PexStringItem(GetString));
                 }
             }
-            return new StringsReadResult(this);
         }
 
         public void AnalysisStrings()
