@@ -122,6 +122,7 @@ namespace PexInterface
             return Space;
         }
 
+        public List<string> DangerFunctions = new List<string>() { "Getformfromfile", "fromfile", "getformfromfile" };
         public void Init()
         {
             FuncNameCheck = new FuncRule();
@@ -451,9 +452,18 @@ namespace PexInterface
 
                     FuncStrs[i].Score = -1;
 
+                    if (DangerFunctions.Contains(SetFlow.ConsumedByMethodName))
+                    {
+                        FuncStrs[i].Score = -100;
+                    }
+                    else
                     if (SetFlow.ConsumedByMethodName.Length > 0)
                     {
-                        FuncStrs[i].Score += FuncNameCheck.CheckFuncByName(SetFlow.CallInfo.MethodName,SetFlow.CallInfo.StringArgIndex,SetFlow.CallInfo.TotalArgCount);
+                        FuncStrs[i].Score += FuncNameCheck.CheckFuncByName(SetFlow.CallInfo.MethodName, SetFlow.CallInfo.StringArgIndex, SetFlow.CallInfo.TotalArgCount);
+                    }
+                    else
+                    { 
+                    
                     }
                 }
             }
