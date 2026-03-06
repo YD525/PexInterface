@@ -1063,7 +1063,6 @@ public class AsmBase
 
 public class AsmCode:AsmBase
 {
-    public int PscFuncLineIndex = 0;
     public int GetJumpTarget()
     {
         if (OPCode == null || OPCode.Arguments == null) return -1;

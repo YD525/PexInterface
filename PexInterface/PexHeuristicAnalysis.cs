@@ -366,7 +366,7 @@ namespace PexInterface
                     //var GetLine in GetFunc.TrackerRef.Lines
                     for (int ir =0;ir<GetFunc.TrackerRef.Lines.Count;ir++)
                     {
-                        var GetLine = GetFunc.TrackerRef.Lines[ir];
+                        AsmCode GetLine = GetFunc.TrackerRef.Lines[ir];
                         string SetCode = GetLine.PSCCode;
                         if (string.IsNullOrEmpty(SetCode)) continue;
 
@@ -391,8 +391,6 @@ namespace PexInterface
 
                             Content.AppendLine(outputLine);
                         }
-
-                        GetLine.PscFuncLineIndex = Content.LineCount;
                     }
 
                     if (Style == CodeGenStyle.Papyrus)
