@@ -5,8 +5,6 @@ using System.Linq;
 using static PexInterface.PexReader;
 using System.Text.RegularExpressions;
 using static PapyrusAsmDecoder;
-using System.Diagnostics;
-using System.Text;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -228,190 +226,161 @@ public class PapyrusAsmDecoder
           this.Value = Value.Trim();
         }
     }
-    public List<FunctionBlock> DeFunction(PscCls ParentCls,List<PexString> TempStrings,bool CanSkipPscDeCode)
+    public List<FunctionBlock> DeFunction(
+    PscCls parentCls,
+    List<PexString> tempStrings,
+    bool canSkipPscDeCode)
     {
-        List<FunctionBlock> FunctionBlocks = new List<FunctionBlock>();
-        for (int i = 0; i < TempStrings.Count; i++)
+        var functionBlocks = new List<FunctionBlock>();
+
+        // Determine which state is the "Auto State" so we can tag it later.
+        // The auto-state name is stored in the Object header.
+        string autoStateName = "";
+        if (Reader.Objects.Count > 0)
+            autoStateName = tempStrings[Reader.Objects[0].AutoStateNameIndex].Value;
+
+        foreach (var obj in Reader.Objects)
         {
-            var Item = TempStrings[i];
-
-            ObjType CheckType = ObjType.Null;
-
-            var GetFunc = QueryAnyByID(Item.Index, ref CheckType);
-            if (CheckType == ObjType.Functions)
+            foreach (var state in obj.States)
             {
-                List<PexFunction> Function = GetFunc as List<PexFunction>;
+                // State name: "" is the empty/global state (functions not inside any State block)
+                string stateName = tempStrings[state.NameIndex].Value;
 
-                if (Function.Count == 1)
+                foreach (var pexFunc in state.Functions)
                 {
-                    FunctionBlock NFunctionBlock = new FunctionBlock();
-                    var GetFunc1st = Function[0];
+                    var block = BuildFunctionBlock(
+                        pexFunc, stateName, tempStrings, parentCls, canSkipPscDeCode);
 
-                    string ReturnType = TempStrings[GetFunc1st.ReturnTypeIndex].Value;
-
-                    if (ReturnType == "None")
-                    {
-                        ReturnType = string.Empty;
-                    }
-                    else
-                    {
-                        if (ReturnType.Length > 0)
-                        {
-                            ReturnType += " ";
-                        }
-                    }
-
-                    ReturnType = ReturnType.Trim();
-
-                    NFunctionBlock.FunctionName = Item.Value;
-                    NFunctionBlock.ReturnType = ReturnType;
-
-                    if (Item.Value == "OnMenuOpenST")
-                    { 
-                    
-                    }
-
-                    List<LocalVariable> LocalVariables = new List<LocalVariable>();
-
-                    for (int ir = 0; ir < GetFunc1st.NumParams; ir++)
-                    {
-                        if (GetFunc1st.Parameters.Count > ir)
-                        {
-                            var GetParam = GetFunc1st.Parameters[ir];
-                            string GetType = TempStrings[GetFunc1st.Parameters[ir].TypeIndex].Value;
-                            string GetParamName = TempStrings[GetParam.NameIndex].Value;
-
-                            LocalVariable NLocalVariable = new LocalVariable();
-                            NLocalVariable.Name = GetParamName;
-                            NLocalVariable.Type = GetType;
-
-                            LocalVariables.Add(NLocalVariable);
-                        }
-                    }
-
-                    NFunctionBlock.Params = LocalVariables;
-
-                    string FunctionCode = "";
-                    int LineIndex = 0;
-                    DecompileTracker Tracker = new DecompileTracker();
-
-                    foreach (var GetInstruction in GetFunc1st.Instructions)
-                    {
-                        AsmOPCode OPCode = new AsmOPCode();
-                        OPCode.Value = GetInstruction.GetOpcodeName();
-                        OPCode.Arguments = GetInstruction.Arguments;
-
-                        if (OPCode.Value.StartsWith("jmp"))
-                        { 
-                        
-                        }
-
-                        List<AsmOrder> Orders = new List<AsmOrder>();
-                        PexFunction PexFunc = null;
-
-                        foreach (var GetArg in GetInstruction.Arguments)
-                        {
-                            AsmOrder Order = null;
-
-                            if (GetArg.Type == 3) // integer literal
-                            {
-                                Orders.Add(new AsmOrder(GetArg.Value?.ToString() ?? "0"));
-                                continue;
-                            }
-                            if (GetArg.Type == 4) // float literal
-                            {
-                                Orders.Add(new AsmOrder(GetArg.Value?.ToString() ?? "0.0"));
-                                continue;
-                            }
-                            if (GetArg.Type == 5) // bool literal
-                            {
-                                Orders.Add(new AsmOrder(GetArg.Value is bool B && B ? "True" : "False"));
-                                continue;
-                            }
-                            if (GetArg.Type == 0) // null
-                            {
-                                Orders.Add(new AsmOrder("None"));
-                                continue;
-                            }
-
-                            var GetIndex = ObjToInt(GetArg.Value);
-                            if (GetIndex < 0)
-                            {
-                                continue;
-                            }
-
-                            var GetObj = TempStrings[GetIndex];
-
-                            var ChildType = ObjType.Null;
-                            var GetChildFunc = QueryAnyByID(GetObj.Index, ref ChildType);
-
-                            if (ChildType == ObjType.Functions)
-                            {
-                                var Functions = GetChildFunc as List<PexFunction>;
-                                if (Functions.Count > 0)
-                                {
-                                    PexFunc = Functions[0];
-                                }
-                            }
-                            else
-                            {
-
-                            }
-
-                            Order = new AsmOrder(GetObj.Value.Trim());
-
-                            ObjType VariableType = ObjType.Null;
-                            var GetVariable = QueryAnyByID(GetObj.Index, ref VariableType);
-                            if (GetVariable != null)
-                            {
-                                if (VariableType == ObjType.Variables)
-                                {
-                                    PexVariable Variable = GetVariable as PexVariable;
-                                    Order.InFo = new AsmInFo();
-                                    Order.InFo.Variable = Variable;
-                                }
-
-                                if (VariableType == ObjType.Functions)
-                                {
-                                    PexFunction Func = GetVariable as PexFunction;
-                                    Order.InFo = new AsmInFo();
-                                    Order.InFo.Function = Func;
-                                }
-
-                                if (VariableType == ObjType.Properties)
-                                {
-                                    PexProperty Property = GetVariable as PexProperty;
-                                    Order.InFo = new AsmInFo();
-                                    Order.InFo.Property = Property;
-                                }
-                            }
-
-                            if (Order != null)
-                            {
-                                if (GetArg.Type == 2)
-                                {
-                                    Order.Value = "\"" + Order.Value + "\"";
-                                }
-
-                                Orders.Add(Order);
-                            }
-
-                            
-                        }
-                        Tracker.CheckCode(LineIndex,OPCode, Orders);
-                        LineIndex++;
-                    }
-
-                    NFunctionBlock.FunctionCode = FunctionCode;
-                    NFunctionBlock.TracksRef = Tracker;
-
-                    AsmExtend.DeFunctionCode(CodeGenStyle.CSharp,TempStrings,ParentCls, NFunctionBlock, Tracker, CanSkipPscDeCode);
-
-                    FunctionBlocks.Add(NFunctionBlock);
+                    functionBlocks.Add(block);
                 }
             }
         }
-        return FunctionBlocks;
+
+        return functionBlocks;
+    }
+
+    // ── Helper: build one FunctionBlock from a PexFunction ───────────────────────
+
+    private FunctionBlock BuildFunctionBlock(
+        PexFunction pexFunc,
+        string stateName,
+        List<PexString> tempStrings,
+        PscCls parentCls,
+        bool canSkipPscDeCode)
+    {
+        var block = new FunctionBlock();
+
+        // Function identity
+        block.FunctionName = tempStrings[pexFunc.FunctionNameIndex].Value;
+        block.StateName = stateName;
+
+        // Flags  (bit 0 = Global, bit 1 = Native)
+        block.IsGlobal = (pexFunc.Flags & 0x01) != 0;
+        block.IsNative = (pexFunc.Flags & 0x02) != 0;
+
+        // Return type  ("None" → empty string in PSC)
+        string retType = tempStrings[pexFunc.ReturnTypeIndex].Value;
+        block.ReturnType = retType == "None" ? "" : retType.Trim();
+
+        // Parameters
+        var paramList = new List<LocalVariable>();
+        for (int i = 0; i < pexFunc.NumParams && i < pexFunc.Parameters.Count; i++)
+        {
+            var p = pexFunc.Parameters[i];
+            paramList.Add(new LocalVariable
+            {
+                Name = tempStrings[p.NameIndex].Value,
+                Type = tempStrings[p.TypeIndex].Value
+            });
+        }
+        block.Params = paramList;
+
+        // Build instruction tracker
+        var tracker = new DecompileTracker();
+        int lineIdx = 0;
+
+        foreach (var instr in pexFunc.Instructions)
+        {
+            var opCode = new AsmOPCode
+            {
+                Value = instr.GetOpcodeName(),
+                Arguments = instr.Arguments
+            };
+
+            var orders = BuildOrders(instr, tempStrings);
+            tracker.CheckCode(lineIdx++, opCode, orders);
+        }
+
+        block.TracksRef = tracker;
+        block.FunctionCode = "";
+
+        // Decompile body
+        AsmExtend.DeFunctionCode(
+            CodeGenStyle.CSharp, tempStrings, parentCls,
+            block, tracker, canSkipPscDeCode);
+
+        return block;
+    }
+
+    // ── Helper: convert one instruction's arguments to AsmOrder list ─────────────
+
+    private List<AsmOrder> BuildOrders(
+        PexInstruction instr,
+        List<PexString> tempStrings)
+    {
+        var orders = new List<AsmOrder>();
+
+        foreach (var arg in instr.Arguments)
+        {
+            switch (arg.Type)
+            {
+                case 0: // null / None
+                    orders.Add(new AsmOrder("None"));
+                    continue;
+
+                case 3: // integer literal
+                    orders.Add(new AsmOrder(arg.Value?.ToString() ?? "0"));
+                    continue;
+
+                case 4: // float literal
+                    orders.Add(new AsmOrder(arg.Value?.ToString() ?? "0.0"));
+                    continue;
+
+                case 5: // bool literal
+                    orders.Add(new AsmOrder(
+                        arg.Value is bool b && b ? "True" : "False"));
+                    continue;
+            }
+
+            // Types 1 (identifier) and 2 (string) — index into string table
+            int idx = ObjToInt(arg.Value);
+            if (idx < 0) continue;
+
+            var strEntry = tempStrings[idx];
+            var order = new AsmOrder(strEntry.Value.Trim());
+
+            // Attach metadata (variable / function / property info)
+            ObjType infoType = ObjType.Null;
+            var infoObj = QueryAnyByID(strEntry.Index, ref infoType);
+            if (infoObj != null)
+            {
+                order.InFo = new AsmInFo();
+                if (infoType == ObjType.Variables)
+                    order.InFo.Variable = infoObj as PexVariable;
+                else if (infoType == ObjType.Functions)
+                    order.InFo.Function = (infoObj as List<PexFunction>)?[0];
+                else if (infoType == ObjType.Properties)
+                    order.InFo.Property = infoObj as PexProperty;
+            }
+
+            // String literals get quotes
+            if (arg.Type == 2)
+                order.Value = "\"" + order.Value + "\"";
+
+            orders.Add(order);
+        }
+
+        return orders;
     }
     public void Decompile(out PexHeuristicAnalysis Analyst, bool CanSkipPscDeCode = false)
     {
@@ -489,15 +458,17 @@ public class FunctionBlock
     public string FunctionName = "";
     public List<LocalVariable> Params = new List<LocalVariable>();
     public string ReturnType = "";
-
+  
     public string FunctionCode = "";
+    public string StateName = "";
 
     public int StartIndex = 0;
 
+    public bool IsGlobal = false;
+    public bool IsNative = false;
+
     public DecompileTracker TracksRef = null;
 }
-
-
 
 public class CastLink
 {

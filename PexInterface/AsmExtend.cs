@@ -1,11 +1,68 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using static PexInterface.PexReader;
 
 namespace PexInterface
 {
+    // =========================================================================
+    // Code-style abstraction
+    // =========================================================================
+
+    /// <summary>
+    /// Defines how control-flow keywords and brackets are emitted.
+    /// Implement this interface to add a new output language style.
+    /// </summary>
+    public interface ICodeStyle
+    {
+        string If(string condition);
+        string ElseIf(string condition);
+        string Else();
+        string EndIf();
+        string While(string condition);
+        string EndWhile();
+        string Indent(int depth);
+    }
+
+    /// <summary>
+    /// Original Papyrus scripting language style.
+    /// </summary>
+    public class PapyrusStyle : ICodeStyle
+    {
+        public static readonly PapyrusStyle Instance = new PapyrusStyle();
+
+        public string If(string condition) => "If " + condition;
+        public string ElseIf(string condition) => "ElseIf " + condition;
+        public string Else() => "Else";
+        public string EndIf() => "EndIf";
+        public string While(string condition) => "While " + condition;
+        public string EndWhile() => "EndWhile";
+        public string Indent(int depth) => new string(' ', depth * 4);
+    }
+
+    /// <summary>
+    /// C#-style output with braces.
+    /// </summary>
+    public class CSharpStyle : ICodeStyle
+    {
+        public static readonly CSharpStyle Instance = new CSharpStyle();
+
+        public string If(string condition) => "if (" + condition + ") {";
+        public string ElseIf(string condition) => "} else if (" + condition + ") {";
+        public string Else() => "} else {";
+        public string EndIf() => "}";
+        public string While(string condition) => "while (" + condition + ") {";
+        public string EndWhile() => "}";
+        public string Indent(int depth) => new string(' ', depth * 4);
+    }
+
+
+    // =========================================================================
+    // AsmExtend — Pass 1 (opcode → PSCCode) + orchestration
+    // =========================================================================
+
     public class AsmExtend
     {
         public class TempVariable
@@ -13,30 +70,73 @@ namespace PexInterface
             public string Type = "";
             public string Variable = "";
             public int LinkLineIndex = 0;
-            public TempVariable(string Variable, int LineIndex)
+
+            public TempVariable(string variable, int lineIndex)
             {
-                this.Variable = Variable;
-                this.LinkLineIndex = LineIndex;
+                Variable = variable;
+                LinkLineIndex = lineIndex;
             }
         }
-       
 
-        public static void DeFunctionCode(CodeGenStyle Style, List<PexString> TempStrings, PscCls ParentCls, FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
+        // ─────────────────────────────────────────────────────────────────────
+        // Public entry point
+        // ─────────────────────────────────────────────────────────────────────
+
+        public static void DeFunctionCode(
+            CodeGenStyle Style,
+            List<PexString> TempStrings,
+            PscCls ParentCls,
+            FunctionBlock Func,
+            DecompileTracker TrackerRef,
+            bool CanSkipPscDeCode,
+            ICodeStyle CodeStyle = null)
         {
-            if (Func.FunctionName == "IsModFound")
+            // Debug hook — keep for breakpoint inspection
+            if (Func.FunctionName == "IsFeatureEnabled")
             {
-                string ASMCode = "";
+                string AsmCode = "";
                 for (int i = 0; i < TrackerRef.Lines.Count; i++)
-                    ASMCode += TrackerRef.Lines[i].GetAsmCode() + "\n";
+                    AsmCode += TrackerRef.Lines[i].GetAsmCode() + "\n";
                 GC.Collect();
             }
 
             if (CanSkipPscDeCode) return;
 
-            int n = TrackerRef.Lines.Count;
+            // Default to Papyrus style when none is specified
+            if (CodeStyle == null)
+            {
+                if (Style == CodeGenStyle.Papyrus)
+                {
+                    CodeStyle = PapyrusStyle.Instance;
+                }
+                else
+                { 
+                   CodeStyle = CSharpStyle.Instance;
+                }
+            }
+                
 
-            // Pass 1: translate each opcode to PSCCode; control-flow opcodes left empty
-            for (int i = 0; i < n; i++)
+            int Length = TrackerRef.Lines.Count;
+
+            Pass1_TranslateOpcodes(TrackerRef, ParentCls, Func, Length);
+            Pass2_InferArrayTypes(TrackerRef, ParentCls, Length);
+            Pass3_ResolveTypePlaceholders(TrackerRef, ParentCls, Func, TempStrings, Length);
+            Pass4_ControlFlow(TrackerRef, TempStrings, CodeStyle);
+        }
+
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Pass 1 — translate each opcode to PSCCode
+        // Control-flow opcodes are intentionally left empty (handled in Pass 4).
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static void Pass1_TranslateOpcodes(
+            DecompileTracker TrackerRef,
+            PscCls ParentCls,
+            FunctionBlock Func,
+            int Length)
+        {
+            for (int i = 0; i < Length; i++)
             {
                 var AsmLine = TrackerRef.Lines[i];
                 if (AsmLine == null || AsmLine.Links == null) continue;
@@ -45,224 +145,22 @@ namespace PexInterface
 
                 switch (AsmLine.OPCode.Value)
                 {
-                    case "assign":
-                        {
-                            string VarName = Head.GetValue();
-                            bool IsFirstAssign = !TrackerRef.Variables.IsCreated(VarName);
-                            TrackerRef.Variables.Add(new AsmOffset(i, 0), VarName, 0, null, VariableAccess.None);
+                    case "assign": EmitAssign(AsmLine, Head, TrackerRef, i); break;
+                    case "callmethod": EmitCallMethod(AsmLine, Head, TrackerRef, i); break;
+                    case "callstatic": EmitCallStatic(AsmLine, Head); break;
+                    case "iadd": EmitIAdd(AsmLine, Head, TrackerRef, i); break;
+                    case "isub": EmitISub(AsmLine, Head); break;
+                    case "return": EmitReturn(AsmLine, Head); break;
+                    case "not": EmitNot(AsmLine, Head); break;
+                    case "strcat": EmitStrcat(AsmLine, Head); break;
+                    case "cast": EmitCast(AsmLine, Head); break;
+                    case "propget": EmitPropGet(AsmLine, Head); break;
+                    case "propset": EmitPropSet(AsmLine, Head); break;
+                    case "array_create": EmitArrayCreate(AsmLine, Head); break;
+                    case "array_setelement": EmitArraySetElement(AsmLine, Head); break;
+                    case "array_getelement": EmitArrayGetElement(AsmLine, Head); break;
+                    case "array_length": EmitArrayLength(AsmLine, Head); break;
 
-                            if (Head.Next == null)
-                            {
-                                AsmLine.PSCCode = string.Format("{0} = 0", VarName);
-                            }
-                            else
-                            {
-                                string RhsRaw = Head.Next.GetValue();
-
-                                // fold preceding iadd into += when rhs is a temp
-                                if (RhsRaw.StartsWith("temp"))
-                                {
-                                    for (int j = i - 1; j >= 0; j--)
-                                    {
-                                        var PrevLine = TrackerRef.Lines[j];
-                                        if (PrevLine.OPCode.Value != "iadd") continue;
-                                        var PrevHead = PrevLine.Links.GetHead();
-                                        if (PrevHead.GetValue() != RhsRaw) continue;
-
-                                        string Src = PrevHead.Next?.GetValue() ?? "?";
-                                        string Amount = PrevHead.Next?.Next?.GetValue() ?? "1";
-                                        PrevLine.PSCCode = "";
-
-                                        AsmLine.PSCCode = Src == VarName
-                                            ? string.Format("{0} += {1};", VarName, Amount)
-                                            : string.Format("{0} = {1} + {2};", VarName, Src, Amount);
-                                        goto AssignDone;
-                                    }
-                                }
-
-                                // Initial assignment: Attempt to infer the type from the RHS and write the __TYPE__ placeholder.
-                                if (IsFirstAssign && !VarName.StartsWith("::"))
-                                {
-                                    AsmLine.PSCCode = string.Format("__TYPE__{0} = {1}", VarName, RhsRaw);
-                                }
-                                else
-                                {
-                                    AsmLine.PSCCode = string.Format("{0} = {1}", VarName, RhsRaw);
-                                }
-                            AssignDone:;
-                            }
-                            break;
-                        }
-
-                    case "callmethod":
-                        {
-                            string FuncName = Head.GetValue();
-                            var CallerNode = Head.Next;
-                            string Caller = (CallerNode != null && CallerNode.IsSelf())
-                                               ? "Self" : (CallerNode?.GetValue() ?? "Self");
-                            var ReturnNode = CallerNode?.Next;
-                            string ReturnVar = ReturnNode?.GetValue() ?? "";
-
-                            // [3] is NumParams (integer literal) — skip it, params start at [4]
-                            var Params = new List<string>();
-                            var Node = ReturnNode?.Next?.Next;
-                            while (Node != null)
-                            {
-                                if (!Node.IsNull()) Params.Add(Node.GetValue());
-                                Node = Node.Next;
-                            }
-                            string ParamStr = string.Join(", ", Params);
-                            string CallExpr = string.Format("{0}.{1}({2})", Caller, FuncName, ParamStr);
-
-                            AsmLine.PSCCode = (ReturnNode == null || ReturnNode.IsNull())
-                                ? CallExpr + ";"
-                                : string.Format("{0} = {1};", ReturnVar, CallExpr);
-
-                            TrackerRef.Variables.Add(new AsmOffset(i, 2), ReturnVar, 0,
-                                new List<AsmLink> { CallerNode, Head }, VariableAccess.Set);
-                            break;
-                        }
-
-                    case "iadd":
-                        {
-                            string Dest = Head.GetValue();
-                            string Src = Head.Next?.GetValue() ?? "?";
-                            string Amount = Head.Next?.Next?.GetValue() ?? "1";
-
-                            if (Dest == Src)
-                            {
-                                AsmLine.PSCCode = string.Format("{0} += {1};", Dest, Amount);
-                                if (!TrackerRef.Variables.IsCreated(Dest))
-                                    TrackerRef.Variables.Add(new AsmOffset(i, 0), Dest, 0, null, VariableAccess.Set);
-                                TrackerRef.Variables.SetType(TrackerRef, Dest, AsmVariableType.Int);
-                            }
-                            else
-                            {
-                                AsmLine.PSCCode = string.Format("{0} = {1} + {2};", Dest, Src, Amount);
-                                if (!TrackerRef.Variables.IsCreated(Dest))
-                                    TrackerRef.Variables.Add(new AsmOffset(i, 0), Src, 0, null, VariableAccess.Set);
-                                TrackerRef.Variables.SetType(TrackerRef, Dest, AsmVariableType.Int);
-                                TrackerRef.Variables.SetType(TrackerRef, Src, AsmVariableType.Int);
-                            }
-                            break;
-                        }
-
-                    case "isub":
-                        {
-                            string VarName = Head.GetValue();
-                            string Operand = Head.Next != null ? Head.Next.GetValue() : "1";
-                            AsmLine.PSCCode = string.Format("{0} -= {1}", VarName, Operand);
-                            break;
-                        }
-
-                    case "return":
-                        
-                        AsmLine.PSCCode = string.Format("return {0};", Head.GetValue());
-
-                        break;
-
-                    case "not":
-                        {
-                            string RetVar = Head.GetValue();
-                            string Operand = Head.Next?.GetValue() ?? "?";
-                            AsmLine.PSCCode = string.Format("{0} = !{1}", RetVar, Operand);
-                            break;
-                        }
-
-                    // callstatic layout: <ClassName> <FunctionName> <ReturnVar> <NumParams> [params...]
-                    case "callstatic":
-                        {
-                            string ClassName = PapyrusAsmDecoder.CapitalizeFirst(Head.GetValue());
-                            var FuncNode = Head.Next;
-                            string FuncName = FuncNode?.GetValue() ?? "?";
-                            var RetNode = FuncNode?.Next;
-                            string ReturnVar = RetNode?.GetValue() ?? "";
-
-                            // [3] is NumParams — skip it, params start at [4]
-                            var Params = new List<string>();
-                            var Node = RetNode?.Next?.Next;
-                            while (Node != null)
-                            {
-                                if (!Node.IsNull()) Params.Add(Node.GetValue());
-                                Node = Node.Next;
-                            }
-                            string ParamStr = string.Join(", ", Params);
-                            string CallExpr = string.Format("{0}.{1}({2})", ClassName, FuncName, ParamStr);
-
-                            AsmLine.PSCCode = (RetNode == null || RetNode.IsNull())
-                                ? CallExpr + ";"
-                                : string.Format("{0} = {1};", ReturnVar, CallExpr);
-                            break;
-                        }
-
-                    case "strcat":
-                        {
-                            string Dest = Head.GetValue();
-                            string Left = Head.Next?.GetValue() ?? "?";
-                            string Right = Head.Next?.Next?.GetValue() ?? "?";
-                            AsmLine.PSCCode = string.Format("{0} = {1} + {2};", Dest, Left, Right);
-                            break;
-                        }
-                    // cast layout: <dest> <src>  →  dest = src  (Papyrus cast is an assignment)
-                    case "cast":
-                        {
-                            string Dest = Head.GetValue();
-                            string Src = Head.Next?.GetValue() ?? "?";
-                            AsmLine.PSCCode = string.Format("{0} = {1};", Dest, Src);
-                            break;
-                        }
-                    case "propget":
-                        {
-                            string PropName = Head.GetValue();
-                            string Obj = Head.Next?.GetValue() ?? "Self";
-                            string Dest = Head.Next?.Next?.GetValue() ?? "?";
-
-                            // Normalize caller: strip _var suffix, treat self as Self
-                            if (Obj.ToLower() == "self")
-                                Obj = "Self";
-
-                            AsmLine.PSCCode = string.Format("{0} = {1}.{2};", Dest, Obj, PropName);
-                            break;
-                        }
-                    // array_create layout: <dest> <size>
-                    case "array_create":
-                        {
-                            string Dest = Head.GetValue();
-                            string Size = Head.Next?.GetValue() ?? "?";
-                            AsmLine.PSCCode = string.Format("{0} = new __ARRAY_TYPE__[{1}];", Dest, Size);
-                            break;
-                        }
-
-                    // array_setelement layout: <array> <index> <value>
-                    case "array_setelement":
-                        {
-                            string Arr = Head.GetValue();
-                            string Index = Head.Next?.GetValue() ?? "?";
-                            string Value = Head.Next?.Next?.GetValue() ?? "?";
-                            AsmLine.PSCCode = string.Format("{0}[{1}] = {2};", Arr, Index, Value);
-                            break;
-                        }
-
-                    // array_getelement layout: <dest> <array> <index>
-                    case "array_getelement":
-                        {
-                            string Dest = Head.GetValue();
-                            string Arr = Head.Next?.GetValue() ?? "?";
-                            string Index = Head.Next?.Next?.GetValue() ?? "?";
-                            AsmLine.PSCCode = string.Format("{0} = {1}[{2}];", Dest, Arr, Index);
-                            break;
-                        }
-
-                    // array_length layout: <dest> <array>
-                    case "array_length":
-                        {
-                            string Dest = Head.GetValue();
-                            string Arr = Head.Next?.GetValue() ?? "?";
-                            AsmLine.PSCCode = string.Format("{0} = {1}.Length;", Dest, Arr);
-                            break;
-                        }
-
-                    // control-flow opcodes: handled entirely in pass 2
                     case "cmp_lt":
                     case "cmp_le":
                     case "cmp_gt":
@@ -279,136 +177,328 @@ namespace PexInterface
                         break;
                 }
             }
+        }
 
-            // Scan backwards for the first matching array_setelement, and infer the array element type based on the value type.
-            for (int i = 0; i < n; i++)
+        // ─────────────────────────────────────────────────────────────────────
+        // Pass 2 — infer array element type for every array_create instruction
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static void Pass2_InferArrayTypes(
+            DecompileTracker TrackerRef,
+            PscCls ParentCls,
+            int Length)
+        {
+            for (int i = 0; i < Length; i++)
             {
                 var AsmLine = TrackerRef.Lines[i];
                 if (AsmLine.OPCode.Value != "array_create") continue;
                 if (!AsmLine.PSCCode.Contains("__ARRAY_TYPE__")) continue;
 
                 string ArrayName = AsmLine.Links.GetHead().GetValue();
-                string InferredType = "var"; 
+                string InferredType = "var";
 
-                for (int j = i + 1; j < n; j++)
+                for (int j = i + 1; j < Length; j++)
                 {
                     var ScanLine = TrackerRef.Lines[j];
                     if (ScanLine.OPCode.Value != "array_setelement") continue;
 
                     var ScanHead = ScanLine.Links.GetHead();
-                    string ScanArr = ScanHead.GetValue();
-                    if (ScanArr != ArrayName) continue;
+                    if (ScanHead.GetValue() != ArrayName) continue;
 
-                    // array_setelement layout: [array] [index] [value]
                     var ValueNode = ScanHead.Next?.Next;
                     if (ValueNode == null) break;
 
-                    string Val = ValueNode.GetValue();
-
-                    // Inferring from the primitive type markers (strings with Type==2 are enclosed in quotes, Type==3 is an integer, etc.)
-                    // It's more accurate to check the original Type field of the OPCode parameter.
-                    if (ScanLine.OPCode.Arguments.Count >= 3)
-                    {
-                        var RawArg = ScanLine.OPCode.Arguments[2];
-                        switch (RawArg.Type)
-                        {
-                            case 2: // string literal
-                                InferredType = "String";
-                                break;
-                            case 3: // integer literal
-                                InferredType = "Int";
-                                break;
-                            case 4: // float literal
-                                InferredType = "Float";
-                                break;
-                            case 5: // bool literal
-                                InferredType = "Bool";
-                                break;
-                            case 1: // identifier — Further determination based on value content
-                                {
-                                    // Try to find the type from GlobalVariable / AutoGlobalVariable
-                                    var GlobalVar = ParentCls.QueryGlobalVariable(Val);
-                                    if (GlobalVar != null && GlobalVar.Type.Length > 0)
-                                    {
-                                        InferredType = GlobalVar.Type;
-                                    }
-                                    else
-                                    {
-                                        var AutoVar = ParentCls.QueryAutoGlobalVariable(Val);
-                                        if (AutoVar != null && AutoVar.Type.Length > 0)
-                                            InferredType = AutoVar.Type;
-                                        else
-                                        {
-                                            if (Val.StartsWith("$"))
-                                                InferredType = "String";
-                                        }
-                                    }
-                                    break;
-                                }
-                            case 0: // var
-                                InferredType = "var";
-                                break;
-                            default:
-                                // Finally, guess based on the value literal
-                                if (Val.StartsWith("\"") || Val.StartsWith("$"))
-                                    InferredType = "String";
-                                else if (int.TryParse(Val, out _))
-                                    InferredType = "Int";
-                                else if (float.TryParse(Val, System.Globalization.NumberStyles.Float,
-                                             System.Globalization.CultureInfo.InvariantCulture, out _))
-                                    InferredType = "Float";
-                                else if (Val.ToLower() == "true" || Val.ToLower() == "false")
-                                    InferredType = "Bool";
-                                break;
-                        }
-                    }
-                    else
-                    {
-                        // Fallback to literal judgment when parameters are insufficient
-                        if (Val.StartsWith("\"") || Val.StartsWith("$"))
-                            InferredType = "String";
-                        else if (int.TryParse(Val, out _))
-                            InferredType = "Int";
-                        else if (float.TryParse(Val, System.Globalization.NumberStyles.Float,
-                                     System.Globalization.CultureInfo.InvariantCulture, out _))
-                            InferredType = "Float";
-                        else if (Val.ToLower() == "true" || Val.ToLower() == "false")
-                            InferredType = "Bool";
-                    }
-
-                    break; 
+                    InferredType = InferTypeFromArgument(ScanLine, ValueNode.GetValue(), ParentCls, ArgIndex: 2);
+                    break;
                 }
 
                 AsmLine.PSCCode = AsmLine.PSCCode.Replace("__ARRAY_TYPE__", InferredType);
             }
+        }
 
-            for (int i = 0; i < n; i++)
+        // ─────────────────────────────────────────────────────────────────────
+        // Pass 3 — resolve __TYPE__ placeholders left by Pass 1
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static void Pass3_ResolveTypePlaceholders(
+            DecompileTracker TrackerRef,
+            PscCls ParentCls,
+            FunctionBlock Func,
+            List<PexString> TempStrings,
+            int Length)
+        {
+            for (int i = 0; i < Length; i++)
             {
                 var AsmLine = TrackerRef.Lines[i];
                 if (!AsmLine.PSCCode.StartsWith("__TYPE__")) continue;
 
                 string Code = AsmLine.PSCCode.Substring("__TYPE__".Length);
-                int EqIdx = Code.IndexOf('=');
-                if (EqIdx < 0) { AsmLine.PSCCode = Code; continue; }
+                int EqualsIndex = Code.IndexOf('=');
+                if (EqualsIndex < 0) { AsmLine.PSCCode = Code; continue; }
 
-                string VarName = Code.Substring(0, EqIdx).Trim();
-                string Rhs = Code.Substring(EqIdx + 1).Trim();
-
+                string VarName = Code.Substring(0, EqualsIndex).Trim();
+                string Rhs = Code.Substring(EqualsIndex + 1).Trim();
                 string InferredType = InferTypeFromRhs(TrackerRef, i, Rhs, ParentCls, Func, TempStrings);
 
-                if (InferredType.Length > 0)
-                    AsmLine.PSCCode = string.Format("{0} {1} = {2};", InferredType, VarName, Rhs);
-                else
-                    AsmLine.PSCCode = string.Format("{0} = {1};", VarName, Rhs);
+                AsmLine.PSCCode = InferredType.Length > 0
+                    ? string.Format("{0} {1} = {2};", InferredType, VarName, Rhs)
+                    : string.Format("{0} = {1};", VarName, Rhs);
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Pass 4 — control-flow analysis + styled keyword emission
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static void Pass4_ControlFlow(
+            DecompileTracker TrackerRef,
+            List<PexString> TempStrings,
+            ICodeStyle CodeStyle)
+        {
+            ControlFlowCodeGen.ApplyControlFlow(TrackerRef, TempStrings, CodeStyle);
+        }
+
+
+        // =========================================================================
+        // Opcode emitters — one method per opcode
+        // =========================================================================
+
+        private static void EmitAssign(AsmCode AsmLine, AsmLink Head,
+            DecompileTracker TrackerRef, int i)
+        {
+            string VarName = Head.GetValue();
+            bool IsFirstAssign = !TrackerRef.Variables.IsCreated(VarName);
+            TrackerRef.Variables.Add(new AsmOffset(i, 0), VarName, 0, null, VariableAccess.None);
+
+            if (Head.Next == null)
+            {
+                AsmLine.PSCCode = string.Format("{0} = 0;", VarName);
+                return;
             }
 
-            // Pass 2: control-flow analysis + emit indented keywords into PSCCode
-            ControlFlowCodeGen.ApplyControlFlow(TrackerRef, TempStrings);
+            string RhsRaw = Head.Next.GetValue();
+
+            // Fold preceding iadd into +=
+            if (RhsRaw.StartsWith("temp"))
+            {
+                for (int j = i - 1; j >= 0; j--)
+                {
+                    var PrevLine = TrackerRef.Lines[j];
+                    if (PrevLine.OPCode.Value != "iadd") continue;
+                    var PrevHead = PrevLine.Links.GetHead();
+                    if (PrevHead.GetValue() != RhsRaw) continue;
+
+                    string Src = PrevHead.Next?.GetValue() ?? "?";
+                    string Amount = PrevHead.Next?.Next?.GetValue() ?? "1";
+                    PrevLine.PSCCode = "";
+
+                    AsmLine.PSCCode = Src == VarName
+                        ? string.Format("{0} += {1};", VarName, Amount)
+                        : string.Format("{0} = {1} + {2};", VarName, Src, Amount);
+                    return;
+                }
+            }
+
+            // First assignment → emit __TYPE__ placeholder for type inference in Pass 3
+            if (IsFirstAssign && !VarName.StartsWith("::"))
+                AsmLine.PSCCode = string.Format("__TYPE__{0} = {1}", VarName, RhsRaw);
+            else
+                AsmLine.PSCCode = string.Format("{0} = {1}", VarName, RhsRaw);
+        }
+
+        private static void EmitCallMethod(AsmCode AsmLine, AsmLink Head,
+            DecompileTracker TrackerRef, int i)
+        {
+            string FuncName = Head.GetValue();
+            var CallerNode = Head.Next;
+            string Caller = (CallerNode != null && CallerNode.IsSelf())
+                                     ? "Self" : (CallerNode?.GetValue() ?? "Self");
+            var ReturnNode = CallerNode?.Next;
+            string ReturnVar = ReturnNode?.GetValue() ?? "";
+
+            var ParamsList = BuildParamList(ReturnNode?.Next?.Next);
+            string CallExpr = string.Format("{0}.{1}({2})", Caller, FuncName, string.Join(", ", ParamsList));
+
+            AsmLine.PSCCode = (ReturnNode == null || ReturnNode.IsNull())
+                ? CallExpr + ";"
+                : string.Format("{0} = {1};", ReturnVar, CallExpr);
+
+            TrackerRef.Variables.Add(new AsmOffset(i, 2), ReturnVar, 0,
+                new List<AsmLink> { CallerNode, Head }, VariableAccess.Set);
+        }
+
+        private static void EmitCallStatic(AsmCode AsmLine, AsmLink Head)
+        {
+            string ClassName = PapyrusAsmDecoder.CapitalizeFirst(Head.GetValue());
+            var FuncNode = Head.Next;
+            string FuncName = FuncNode?.GetValue() ?? "?";
+            var RetNode = FuncNode?.Next;
+            string ReturnVar = RetNode?.GetValue() ?? "";
+
+            var ParamsList = BuildParamList(RetNode?.Next?.Next);
+            string CallExpr = string.Format("{0}.{1}({2})", ClassName, FuncName, string.Join(", ", ParamsList));
+
+            AsmLine.PSCCode = (RetNode == null || RetNode.IsNull())
+                ? CallExpr + ";"
+                : string.Format("{0} = {1};", ReturnVar, CallExpr);
+        }
+
+        private static void EmitIAdd(AsmCode AsmLine, AsmLink Head,
+            DecompileTracker TrackerRef, int i)
+        {
+            string Dest = Head.GetValue();
+            string Src = Head.Next?.GetValue() ?? "?";
+            string Amount = Head.Next?.Next?.GetValue() ?? "1";
+
+            if (Dest == Src)
+            {
+                AsmLine.PSCCode = string.Format("{0} += {1};", Dest, Amount);
+                if (!TrackerRef.Variables.IsCreated(Dest))
+                    TrackerRef.Variables.Add(new AsmOffset(i, 0), Dest, 0, null, VariableAccess.Set);
+                TrackerRef.Variables.SetType(TrackerRef, Dest, AsmVariableType.Int);
+            }
+            else
+            {
+                AsmLine.PSCCode = string.Format("{0} = {1} + {2};", Dest, Src, Amount);
+                if (!TrackerRef.Variables.IsCreated(Dest))
+                    TrackerRef.Variables.Add(new AsmOffset(i, 0), Src, 0, null, VariableAccess.Set);
+                TrackerRef.Variables.SetType(TrackerRef, Dest, AsmVariableType.Int);
+                TrackerRef.Variables.SetType(TrackerRef, Src, AsmVariableType.Int);
+            }
+        }
+
+        private static void EmitISub(AsmCode AsmLine, AsmLink Head)
+        {
+            string VarName = Head.GetValue();
+            string Operand = Head.Next != null ? Head.Next.GetValue() : "1";
+            AsmLine.PSCCode = string.Format("{0} -= {1};", VarName, Operand);
+        }
+
+        private static void EmitReturn(AsmCode AsmLine, AsmLink Head)
+        {
+            AsmLine.PSCCode = Head.IsNull()
+                ? "Return;"
+                : string.Format("Return {0};", Head.GetValue());
+        }
+
+        private static void EmitNot(AsmCode AsmLine, AsmLink Head)
+        {
+            string RetVar = Head.GetValue();
+            string Operand = Head.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0} = !{1};", RetVar, Operand);
+        }
+
+        private static void EmitStrcat(AsmCode AsmLine, AsmLink Head)
+        {
+            string Dest = Head.GetValue();
+            string Left = Head.Next?.GetValue() ?? "?";
+            string Right = Head.Next?.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0} = {1} + {2};", Dest, Left, Right);
+        }
+
+        private static void EmitCast(AsmCode AsmLine, AsmLink Head)
+        {
+            string Dest = Head.GetValue();
+            string Src = Head.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0} = {1};", Dest, Src);
+        }
+
+        private static void EmitPropGet(AsmCode AsmLine, AsmLink Head)
+        {
+            string PropName = Head.GetValue();
+            string Obj = NormalizeObj(Head.Next?.GetValue() ?? "Self");
+            string Dest = Head.Next?.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0} = {1}.{2};", Dest, Obj, PropName);
+        }
+
+        private static void EmitPropSet(AsmCode AsmLine, AsmLink Head)
+        {
+            string PropName = Head.GetValue();
+            string Obj = NormalizeObj(Head.Next?.GetValue() ?? "Self");
+            string Value = Head.Next?.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0}.{1} = {2};", Obj, PropName, Value);
+        }
+
+        private static void EmitArrayCreate(AsmCode AsmLine, AsmLink Head)
+        {
+            string Dest = Head.GetValue();
+            string Size = Head.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0} = new __ARRAY_TYPE__[{1}];", Dest, Size);
+        }
+
+        private static void EmitArraySetElement(AsmCode AsmLine, AsmLink Head)
+        {
+            string Arr = Head.GetValue();
+            string Index = Head.Next?.GetValue() ?? "?";
+            string Value = Head.Next?.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0}[{1}] = {2};", Arr, Index, Value);
+        }
+
+        private static void EmitArrayGetElement(AsmCode AsmLine, AsmLink Head)
+        {
+            string Dest = Head.GetValue();
+            string Array = Head.Next?.GetValue() ?? "?";
+            string Index = Head.Next?.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0} = {1}[{2}];", Dest, Array, Index);
+        }
+
+        private static void EmitArrayLength(AsmCode AsmLine, AsmLink Head)
+        {
+            string Dest = Head.GetValue();
+            string Array = Head.Next?.GetValue() ?? "?";
+            AsmLine.PSCCode = string.Format("{0} = {1}.Length;", Dest, Array);
+        }
+
+
+        // =========================================================================
+        // Type inference helpers
+        // =========================================================================
+
+        /// <summary>
+        /// Infer element type from a specific argument of an array_setelement instruction.
+        /// </summary>
+        private static string InferTypeFromArgument(
+            AsmCode ScanLine,
+            string Value,
+            PscCls ParentCls,
+            int ArgIndex)
+        {
+            if (ScanLine.OPCode.Arguments.Count > ArgIndex)
+            {
+                var RawArg = ScanLine.OPCode.Arguments[ArgIndex];
+                switch (RawArg.Type)
+                {
+                    case 2: return "String";
+                    case 3: return "Int";
+                    case 4: return "Float";
+                    case 5: return "Bool";
+                    case 0: return "var";
+                    case 1:
+                        {
+                            var Global = ParentCls.QueryGlobalVariable(Value);
+                            if (Global != null && Global.Type.Length > 0) return Global.Type;
+                            var Auto = ParentCls.QueryAutoGlobalVariable(Value);
+                            if (Auto != null && Auto.Type.Length > 0) return Auto.Type;
+                            if (Value.StartsWith("$")) return "String";
+                            return "var";
+                        }
+                }
+            }
+
+            return InferTypeFromLiteral(Value);
+        }
+
+        private static string InferTypeFromLiteral(string Value)
+        {
+            if (Value.StartsWith("\"") || Value.StartsWith("$")) return "String";
+            if (int.TryParse(Value, out _)) return "Int";
+            if (float.TryParse(Value,NumberStyles.Float,CultureInfo.InvariantCulture, out _)) return "Float";
+            if (Value.ToLower() == "true" || Value.ToLower() == "false") return "Bool";
+            return "var";
         }
 
         /// <summary>
-        /// The variable type string is inferred from the RHS (which may be temp or a literal).
-        /// Scan forward to find the source instruction that generated temp, and extract the return type from it.
+        /// Infer the variable type from a RHS expression (literal, identifier, or temp).
         /// </summary>
         private static string InferTypeFromRhs(
             DecompileTracker Tracker,
@@ -416,95 +506,106 @@ namespace PexInterface
             string Rhs,
             PscCls ParentCls,
             FunctionBlock Func,
-            List<PexString> TempStrings)
+            List<PexString> tempStrings)
         {
-            // ── Direct judgment based on literal meaning
-            if (Rhs.StartsWith("\"") || Rhs.StartsWith("$"))
-                return "String";
-            if (Rhs == "True" || Rhs == "False")
-                return "Bool";
-            if (int.TryParse(Rhs, out _))
-                return "Int";
+            // Direct literal checks
+            if (Rhs.StartsWith("\"") || Rhs.StartsWith("$")) return "String";
+            if (Rhs == "True" || Rhs == "False") return "Bool";
+            if (int.TryParse(Rhs, out _)) return "Int";
             if (float.TryParse(Rhs, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out _))
-                return "Float";
-            if (Rhs == "None")
-                return "";
+                    System.Globalization.CultureInfo.InvariantCulture, out _)) return "Float";
+            if (Rhs == "None") return "";
 
-            // -- Non-temp identifiers: look up global variables 
+            // Non-temp: look up in class variables / function params
             if (!Rhs.StartsWith("temp"))
             {
-                var GV = ParentCls.QueryGlobalVariable(Rhs);
-                if (GV != null && GV.Type.Length > 0) return GV.Type;
-                var AV = ParentCls.QueryAutoGlobalVariable(Rhs);
-                if (AV != null && AV.Type.Length > 0) return AV.Type;
-                foreach (var P in Func.Params)
-                    if (P.Name == Rhs) return P.Type;
+                var Global = ParentCls.QueryGlobalVariable(Rhs);
+                if (Global != null && Global.Type.Length > 0) return Global.Type;
+                var Auto = ParentCls.QueryAutoGlobalVariable(Rhs);
+                if (Auto != null && Auto.Type.Length > 0) return Auto.Type;
+                foreach (var Param in Func.Params)
+                    if (Param.Name == Rhs) return Param.Type;
                 return "";
             }
 
-            // ── temp: Tracing the source forward
-            for (int J = FromLine - 1; J >= 0; J--)
+            // Temp: trace backwards to its producing instruction
+            for (int j = FromLine - 1; j >= 0; j--)
             {
-                var L = Tracker.Lines[J];
-                string Lop = L.OPCode?.Value ?? "";
-                var Lh = L.Links?.GetHead();
-                if (Lh == null) continue;
+                var Line = Tracker.Lines[j];
+                string LineOP = Line.OPCode?.Value ?? "";
+                var LineHead = Line.Links?.GetHead();
+                if (LineHead == null) continue;
 
-                // callmethod: [FuncName] [Caller] [ReturnVar] [NumParams] [params...]
-                if (Lop == "callmethod")
+                if (LineOP == "callmethod")
                 {
-                    var RetNode = Lh.Next?.Next;
+                    var RetNode = LineHead.Next?.Next;
                     if (RetNode == null || RetNode.GetValue() != Rhs) continue;
-                    // Find the return type of a function with the same name within the same script
-                    string CalledFuncName = Lh.GetValue();
-                    foreach (var F in ParentCls.Functions)
-                    {
-                        if (F.FunctionName == CalledFuncName && F.ReturnType.Length > 0)
-                            return F.ReturnType;
-                    }
-                    // If the native/external function cannot be found, ReturnType will be returned as null here, without declaration.
+                    string CalledFunc = LineHead.GetValue();
+                    foreach (var Function in ParentCls.Functions)
+                        if (Function.FunctionName == CalledFunc && Function.ReturnType.Length > 0) return Function.ReturnType;
                     return "var";
                 }
 
-                // callstatic: [ClassName] [FuncName] [ReturnVar] [NumParams] [params...]
-                if (Lop == "callstatic")
+                if (LineOP == "callstatic")
                 {
-                    var FuncNode = Lh.Next;
-                    var RetNode = FuncNode?.Next;
+                    var funcNode = LineHead.Next;
+                    var RetNode = funcNode?.Next;
                     if (RetNode == null || RetNode.GetValue() != Rhs) continue;
-                    string CalledFuncName = FuncNode?.GetValue() ?? "";
-                    foreach (var F in ParentCls.Functions)
-                    {
-                        if (F.FunctionName == CalledFuncName && F.ReturnType.Length > 0)
-                            return F.ReturnType;
-                    }
+                    string CalledFunc = funcNode?.GetValue() ?? "";
+                    foreach (var Function in ParentCls.Functions)
+                        if (Function.FunctionName == CalledFunc && Function.ReturnType.Length > 0) return Function.ReturnType;
                     return "var";
                 }
 
-                // cast: [dest] [src] — recursively infers the type of src
-                if (Lop == "cast")
+                if (LineOP == "cast")
                 {
-                    if (Lh.GetValue() != Rhs) continue;
-                    return InferTypeFromRhs(Tracker, J, Lh.Next?.GetValue() ?? "", ParentCls, Func, TempStrings);
+                    if (LineHead.GetValue() != Rhs) continue;
+                    return InferTypeFromRhs(Tracker, j, LineHead.Next?.GetValue() ?? "", ParentCls, Func, tempStrings);
                 }
 
-                // assign: [dest] [src]
-                if (Lop == "assign")
+                if (LineOP == "propget")
                 {
-                    if (Lh.GetValue() != Rhs) continue;
-                    return InferTypeFromRhs(Tracker, J, Lh.Next?.GetValue() ?? "", ParentCls, Func, TempStrings);
+                    var DestNode = LineHead.Next?.Next;
+                    if (DestNode == null || DestNode.GetValue() != Rhs) continue;
+                    return "var"; // property type not available without an external type registry
+                }
+
+                if (LineOP == "assign")
+                {
+                    if (LineHead.GetValue() != Rhs) continue;
+                    return InferTypeFromRhs(Tracker, j, LineHead.Next?.GetValue() ?? "", ParentCls, Func, tempStrings);
                 }
             }
 
             return "";
         }
 
+
+        // =========================================================================
+        // Shared utilities
+        // =========================================================================
+
+        private static string NormalizeObj(string Obj)
+            => Obj.ToLower() == "self" ? "Self" : Obj;
+
+        private static List<string> BuildParamList(AsmLink StartNode)
+        {
+            var List = new List<string>();
+            var Node = StartNode;
+            while (Node != null)
+            {
+                if (!Node.IsNull()) List.Add(Node.GetValue());
+                Node = Node.Next;
+            }
+            return List;
+        }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+
+    // =========================================================================
     // Control-flow event types
-    // ─────────────────────────────────────────────────────────────────────
+    // =========================================================================
+
     public enum CfEventKind
     {
         IfBegin,
@@ -518,7 +619,8 @@ namespace PexInterface
     public class CfEvent
     {
         public CfEventKind Kind;
-        public string Condition; // non-empty for If / ElseIf / While
+        public string Condition;
+
         public CfEvent(CfEventKind kind, string cond = "")
         {
             Kind = kind;
@@ -526,254 +628,325 @@ namespace PexInterface
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Single-pass control-flow analyzer.
-    // ─────────────────────────────────────────────────────────────────────
+
+    // =========================================================================
+    // Single-pass control-flow analyzer
+    // =========================================================================
+
     public class ControlFlowAnalyzer
     {
-        private Dictionary<int, List<CfEvent>> _events = new Dictionary<int, List<CfEvent>>();
+        private readonly Dictionary<int, List<CfEvent>> _Events =
+            new Dictionary<int, List<CfEvent>>();
 
-        public void AddEvent(int lineIndex, CfEvent ev)
+        public void AddEvent(int LineIndex, CfEvent Event)
         {
-            if (!_events.ContainsKey(lineIndex))
-                _events[lineIndex] = new List<CfEvent>();
-            _events[lineIndex].Add(ev);
+            if (!_Events.ContainsKey(LineIndex))
+                _Events[LineIndex] = new List<CfEvent>();
+            _Events[LineIndex].Add(Event);
         }
 
-        public List<CfEvent> GetEvents(int lineIndex)
+        public List<CfEvent> GetEvents(int LineIndex)
         {
-            _events.TryGetValue(lineIndex, out var list);
-            return list;
+            _Events.TryGetValue(LineIndex, out var List);
+            return List;
         }
 
-        // Papyrus jump offset is relative to the instruction after the jump:
+        // Papyrus jump offset is relative to the instruction *after* the jump:
         //   absoluteTarget = jmpIndex + 1 + offset
-        private static int AbsTarget(List<AsmCode> lines, int jmpIdx)
-            => jmpIdx + 1 + lines[jmpIdx].GetJumpTarget();
+        private static int AbsTarget(List<AsmCode> Lines, int JmpIndex)
+            => JmpIndex + 1 + Lines[JmpIndex].GetJumpTarget();
 
-        public static bool IsCmp(string op)
-            => op == "cmp_eq" || op == "cmp_lt" || op == "cmp_le" ||
-               op == "cmp_gt" || op == "cmp_ge";
+        public static bool IsCmp(string OPCode)
+            => OPCode == "cmp_eq" || OPCode == "cmp_lt" || OPCode == "cmp_le" ||
+               OPCode == "cmp_gt" || OPCode == "cmp_ge";
+
+        // ─────────────────────────────────────────────────────────────────────
+        // ElseIf chain detection
+        // ─────────────────────────────────────────────────────────────────────
 
         private struct IfSeg { public int CmpLine, JmpfLine, FalseTarget; }
 
-        private static List<IfSeg> CollectChain(List<AsmCode> lines, int startCmp, int n)
+        private static List<IfSeg> CollectChain(List<AsmCode> Lines, int StartCmp, int Length)
         {
-            var chain = new List<IfSeg>();
-            int cur = startCmp;
+            var Chain = new List<IfSeg>();
+            int Cur = StartCmp;
 
-            while (cur < n && IsCmp(lines[cur].OPCode?.Value ?? ""))
+            while (Cur < Length && IsCmp(Lines[Cur].OPCode?.Value ?? ""))
             {
-                int jf = cur + 1;
-                if (jf >= n || lines[jf].OPCode?.Value != "jmpf") break;
+                int JMPFLine = Cur + 1;
+                if (JMPFLine >= Length || Lines[JMPFLine].OPCode?.Value != "jmpf") break;
 
-                int ft = AbsTarget(lines, jf);
-                chain.Add(new IfSeg { CmpLine = cur, JmpfLine = jf, FalseTarget = ft });
+                int FalseTarget = AbsTarget(Lines, JMPFLine);
+                Chain.Add(new IfSeg { CmpLine = Cur, JmpfLine = JMPFLine, FalseTarget = FalseTarget });
 
-                int prev = ft - 1;
-                if (prev < 0 || prev >= n || lines[prev].OPCode?.Value != "jmp") break;
+                int Prev = FalseTarget - 1;
+                if (Prev < 0 || Prev >= Length || Lines[Prev].OPCode?.Value != "jmp") break;
 
-                cur = ft;
-                if (cur >= n || !IsCmp(lines[cur].OPCode?.Value ?? "")) break;
+                Cur = FalseTarget;
+                if (Cur >= Length || !IsCmp(Lines[Cur].OPCode?.Value ?? "")) break;
             }
 
-            return chain;
+            return Chain;
         }
 
-        public static ControlFlowAnalyzer Analyze(List<AsmCode> lines, Func<int, string> buildCondition)
+        // ─────────────────────────────────────────────────────────────────────
+        // Main analysis entry
+        // ─────────────────────────────────────────────────────────────────────
+
+        public static ControlFlowAnalyzer Analyze(
+            List<AsmCode> Lines,
+            Func<int, string> BuildCondition)
         {
-            var cfa = new ControlFlowAnalyzer();
-            int n = lines.Count;
-            bool[] handled = new bool[n];
+            var CFA = new ControlFlowAnalyzer();
+            int Length = Lines.Count;
+            bool[] Handled = new bool[Length];
 
             int i = 0;
-            while (i < n)
+            while (i < Length)
             {
-                if (handled[i]) { i++; continue; }
+                if (Handled[i]) { i++; continue; }
 
-                string op = lines[i].OPCode?.Value ?? "";
+                string OPCode = Lines[i].OPCode?.Value ?? "";
 
-                // ── Path A: cmp_* followed immediately by jmpf ──
-                if (IsCmp(op) && i + 1 < n && lines[i + 1].OPCode?.Value == "jmpf")
+                // Path A: cmp_* immediately followed by jmpf
+                if (IsCmp(OPCode) && i + 1 < Length && Lines[i + 1].OPCode?.Value == "jmpf")
                 {
-                    int cmpLine = i;
-                    int jmpfLine = i + 1;
-                    int falseTarget = AbsTarget(lines, jmpfLine);
-
-                    // Detect while: a back-jump inside the body that targets <= cmpLine
-                    bool isWhile = false;
-                    int whileJmpLine = -1;
-
-                    for (int k = jmpfLine + 1; k < falseTarget && k < n; k++)
-                    {
-                        if (lines[k].OPCode?.Value == "jmp" && AbsTarget(lines, k) <= cmpLine)
-                        {
-                            isWhile = true;
-                            whileJmpLine = k;
-                            break;
-                        }
-                    }
-
-                    if (isWhile)
-                    {
-                        cfa.AddEvent(cmpLine, new CfEvent(CfEventKind.WhileBegin, buildCondition(cmpLine)));
-                        cfa.AddEvent(whileJmpLine, new CfEvent(CfEventKind.EndWhile));
-
-                        handled[cmpLine] = true;
-                        handled[jmpfLine] = true;
-                        handled[whileJmpLine] = true;
-                        i = cmpLine + 1;
-                        continue;
-                    }
-
-                    var chain = CollectChain(lines, cmpLine, n);
-
-                    if (chain.Count <= 1)
-                    {
-                        cfa.AddEvent(cmpLine, new CfEvent(CfEventKind.IfBegin, buildCondition(cmpLine)));
-                        handled[cmpLine] = true;
-                        handled[jmpfLine] = true;
-
-                        int prevFalse = falseTarget - 1;
-                        if (prevFalse >= 0 && prevFalse < n && lines[prevFalse].OPCode?.Value == "jmp")
-                        {
-                            int elseEnd = Math.Min(AbsTarget(lines, prevFalse) - 1, n - 1);
-                            cfa.AddEvent(falseTarget, new CfEvent(CfEventKind.ElseBegin));
-                            cfa.AddEvent(elseEnd, new CfEvent(CfEventKind.EndIf));
-                            handled[prevFalse] = true;
-                        }
-                        else
-                        {
-                            int endIfLine = Math.Max(0, Math.Min(falseTarget - 1, n - 1));
-                            cfa.AddEvent(endIfLine, new CfEvent(CfEventKind.EndIf));
-                        }
-                    }
-                    else
-                    {
-                        var first = chain[0];
-                        cfa.AddEvent(first.CmpLine, new CfEvent(CfEventKind.IfBegin, buildCondition(first.CmpLine)));
-                        handled[first.CmpLine] = true;
-                        handled[first.JmpfLine] = true;
-
-                        for (int ci = 1; ci < chain.Count; ci++)
-                        {
-                            var seg = chain[ci];
-                            cfa.AddEvent(seg.CmpLine, new CfEvent(CfEventKind.ElseIfBegin, buildCondition(seg.CmpLine)));
-                            handled[seg.CmpLine] = true;
-                            handled[seg.JmpfLine] = true;
-                        }
-
-                        int commonEnd = -1;
-                        int pf0 = chain[0].FalseTarget - 1;
-                        if (pf0 >= 0 && pf0 < n && lines[pf0].OPCode?.Value == "jmp")
-                        {
-                            commonEnd = AbsTarget(lines, pf0) - 1;
-                            handled[pf0] = true;
-                        }
-                        for (int ci = 1; ci < chain.Count; ci++)
-                        {
-                            int pfN = chain[ci].FalseTarget - 1;
-                            if (pfN >= 0 && pfN < n && lines[pfN].OPCode?.Value == "jmp")
-                            {
-                                handled[pfN] = true;
-                                if (commonEnd < 0) commonEnd = AbsTarget(lines, pfN) - 1;
-                            }
-                        }
-                        if (commonEnd < 0)
-                            commonEnd = chain[chain.Count - 1].FalseTarget - 1;
-
-                        commonEnd = Math.Max(0, Math.Min(commonEnd, n - 1));
-                        cfa.AddEvent(commonEnd, new CfEvent(CfEventKind.EndIf));
-                    }
-
-                    i = cmpLine + 1;
+                    i = AnalyzeIfChain(CFA, Lines, Length, Handled, i, BuildCondition);
                     continue;
                 }
 
-                // ── Path B: bare jmpf / jmpt with no preceding cmp_* ──
-                // Papyrus emits this pattern when the branch operand is already a Bool variable,
-                // allowing the compiler to skip the cmp_* instruction entirely.
-                // Only reached when Path A did not match, so no extra guard is needed.
-                if (op == "jmpf" || op == "jmpt")
+                // Path B: bare jmpf / jmpt (Bool variable, no preceding cmp_*)
+                if (OPCode == "jmpf" || OPCode == "jmpt")
                 {
-                    // Resolve the condition directly from the jump operand (a Bool variable name).
-                    // jmpf jumps when false → body runs when true  → condition is the variable itself.
-                    // jmpt jumps when true  → body runs when false → condition is the variable negated.
-                    string condVar = lines[i].Links?.GetHead()?.GetValue() ?? "?";
-                    string condition = (op == "jmpt") ? ("!" + condVar) : condVar;
-                    int falseTarget = AbsTarget(lines, i);
-                    int jmpLine = i;
-
-                    // Detect while: a back-jump inside the body that targets <= jmpLine
-                    bool isWhile = false;
-                    int whileJmpLine = -1;
-
-                    for (int k = jmpLine + 1; k < falseTarget && k < n; k++)
-                    {
-                        if (lines[k].OPCode?.Value == "jmp" && AbsTarget(lines, k) <= jmpLine)
-                        {
-                            isWhile = true;
-                            whileJmpLine = k;
-                            break;
-                        }
-                    }
-
-                    if (isWhile)
-                    {
-                        cfa.AddEvent(jmpLine, new CfEvent(CfEventKind.WhileBegin, condition));
-                        cfa.AddEvent(whileJmpLine, new CfEvent(CfEventKind.EndWhile));
-                        handled[jmpLine] = true;
-                        handled[whileJmpLine] = true;
-                        i++;
-                        continue;
-                    }
-
-                    // If / Else: scan backwards from falseTarget to find the exit jmp of the if-body.
-                    // It skips the else block and may not sit exactly at falseTarget-1.
-                    cfa.AddEvent(jmpLine, new CfEvent(CfEventKind.IfBegin, condition));
-                    handled[jmpLine] = true;
-
-                    int exitJmpLine = -1;
-                    for (int k = falseTarget - 1; k > jmpLine; k--)
-                    {
-                        if (lines[k].OPCode?.Value == "jmp" && AbsTarget(lines, k) > jmpLine)
-                        {
-                            exitJmpLine = k;
-                            break;
-                        }
-                    }
-
-                    if (exitJmpLine >= 0 && falseTarget < n)
-                    {
-                        // Exit jmp found and else block is within bounds: emit Else / EndIf.
-                        int elseEnd = Math.Min(AbsTarget(lines, exitJmpLine) - 1, n - 1);
-                        cfa.AddEvent(falseTarget, new CfEvent(CfEventKind.ElseBegin));
-                        cfa.AddEvent(elseEnd, new CfEvent(CfEventKind.EndIf));
-                        handled[exitJmpLine] = true;
-                    }
-                    else
-                    {
-                        // No else block (or falseTarget out of bounds): plain if.
-                        int endIfLine = Math.Max(0, Math.Min(falseTarget - 1, n - 1));
-                        cfa.AddEvent(endIfLine, new CfEvent(CfEventKind.EndIf));
-                    }
-
-                    i++;
+                    i = AnalyzeBareJump(CFA, Lines, Length, Handled, i, OPCode);
                     continue;
                 }
 
                 i++;
             }
 
-            return cfa;
+            return CFA;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Path A — cmp_* + jmpf  (if / elseif / while)
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static int AnalyzeIfChain(
+            ControlFlowAnalyzer CFA,
+            List<AsmCode> Lines,
+            int Length,
+            bool[] Handled,
+            int CmpLine,
+            Func<int, string> BuildCondition)
+        {
+            int JMPFLine = CmpLine + 1;
+            int FalseTarget = AbsTarget(Lines, JMPFLine);
+
+            // While: a back-jump inside the body targets <= cmpLine
+            if (TryDetectWhile(CFA, Lines, Length, Handled, CmpLine, JMPFLine, FalseTarget, BuildCondition))
+                return CmpLine + 1;
+
+            var Chain = CollectChain(Lines, CmpLine, Length);
+
+            if (Chain.Count <= 1)
+            {
+                // Simple If [/ Else]
+                CFA.AddEvent(CmpLine, new CfEvent(CfEventKind.IfBegin, BuildCondition(CmpLine)));
+                Handled[CmpLine] = true;
+                Handled[JMPFLine] = true;
+                EmitSimpleIfEnd(CFA, Lines, Length, Handled, FalseTarget);
+            }
+            else
+            {
+                // ElseIf chain
+                var First = Chain[0];
+                CFA.AddEvent(First.CmpLine, new CfEvent(CfEventKind.IfBegin, BuildCondition(First.CmpLine)));
+                Handled[First.CmpLine] = true;
+                Handled[First.JmpfLine] = true;
+
+                for (int ci = 1; ci < Chain.Count; ci++)
+                {
+                    var Seg = Chain[ci];
+                    CFA.AddEvent(Seg.CmpLine, new CfEvent(CfEventKind.ElseIfBegin, BuildCondition(Seg.CmpLine)));
+                    Handled[Seg.CmpLine] = true;
+                    Handled[Seg.JmpfLine] = true;
+                }
+
+                int CommonEnd = ResolveChainEnd(CFA, Lines, Length, Handled, Chain);
+                CFA.AddEvent(CommonEnd, new CfEvent(CfEventKind.EndIf));
+            }
+
+            return CmpLine + 1;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Path B — bare jmpf / jmpt  (if / while on a Bool variable)
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static int AnalyzeBareJump(
+            ControlFlowAnalyzer CFA,
+            List<AsmCode> Lines,
+            int Length,
+            bool[] Handled,
+            int JMPLine,
+            string OPCode)
+        {
+            string CondVar = Lines[JMPLine].Links?.GetHead()?.GetValue() ?? "?";
+            string Condition = (OPCode == "jmpt") ? ("!" + CondVar) : CondVar;
+            int FalseTarget = AbsTarget(Lines, JMPLine);
+
+            // While detection
+            int WhileJmpLine = -1;
+            for (int k = JMPLine + 1; k < FalseTarget && k < Length; k++)
+            {
+                if (Lines[k].OPCode?.Value == "jmp" && AbsTarget(Lines, k) <= JMPLine)
+                { WhileJmpLine = k; break; }
+            }
+
+            if (WhileJmpLine >= 0)
+            {
+                CFA.AddEvent(JMPLine, new CfEvent(CfEventKind.WhileBegin, Condition));
+                CFA.AddEvent(WhileJmpLine, new CfEvent(CfEventKind.EndWhile));
+                Handled[JMPLine] = true;
+                Handled[WhileJmpLine] = true;
+                return JMPLine + 1;
+            }
+
+            // If [/ Else] — only emit Else when the instruction immediately before
+            // falseTarget is a jmp whose target is strictly past falseTarget.
+            // This prevents inner or unrelated jmps from being mistaken as else exits.
+            CFA.AddEvent(JMPLine, new CfEvent(CfEventKind.IfBegin, Condition));
+            Handled[JMPLine] = true;
+
+            int PrevFalse = FalseTarget - 1;
+            bool HasElse = PrevFalse > JMPLine
+                             && PrevFalse < Length
+                             && Lines[PrevFalse].OPCode?.Value == "jmp"
+                             && AbsTarget(Lines, PrevFalse) > FalseTarget;
+
+            if (HasElse && FalseTarget < Length)
+            {
+                int ElseEnd = Math.Min(AbsTarget(Lines, PrevFalse) - 1, Length - 1);
+                CFA.AddEvent(FalseTarget, new CfEvent(CfEventKind.ElseBegin));
+                CFA.AddEvent(ElseEnd, new CfEvent(CfEventKind.EndIf));
+                Handled[PrevFalse] = true;
+            }
+            else
+            {
+                int EndIfLine = Math.Max(0, Math.Min(FalseTarget - 1, Length - 1));
+                CFA.AddEvent(EndIfLine, new CfEvent(CfEventKind.EndIf));
+            }
+
+            return JMPLine + 1;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Shared sub-helpers
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static bool TryDetectWhile(
+            ControlFlowAnalyzer CFA,
+            List<AsmCode> Lines,
+            int Length,
+            bool[] Handled,
+            int CMPLine,
+            int JMPFLine,
+            int falseTarget,
+            Func<int, string> buildCondition)
+        {
+            for (int k = JMPFLine + 1; k < falseTarget && k < Length; k++)
+            {
+                if (Lines[k].OPCode?.Value == "jmp" && AbsTarget(Lines, k) <= CMPLine)
+                {
+                    CFA.AddEvent(CMPLine, new CfEvent(CfEventKind.WhileBegin, buildCondition(CMPLine)));
+                    CFA.AddEvent(k, new CfEvent(CfEventKind.EndWhile));
+                    Handled[CMPLine] = true;
+                    Handled[JMPFLine] = true;
+                    Handled[k] = true;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Emits EndIf (and optionally ElseBegin) for a simple single-segment if.
+        /// Only treats the instruction at falseTarget-1 as an else-exit jmp when its
+        /// target is strictly past falseTarget (i.e. it skips an else block).
+        /// </summary>
+        private static void EmitSimpleIfEnd(
+            ControlFlowAnalyzer cfa,
+            List<AsmCode> lines,
+            int n,
+            bool[] handled,
+            int falseTarget)
+        {
+            int prevFalse = falseTarget - 1;
+            if (prevFalse >= 0 && prevFalse < n
+                && lines[prevFalse].OPCode?.Value == "jmp"
+                && AbsTarget(lines, prevFalse) > falseTarget)
+            {
+                int elseEnd = Math.Min(AbsTarget(lines, prevFalse) - 1, n - 1);
+                cfa.AddEvent(falseTarget, new CfEvent(CfEventKind.ElseBegin));
+                cfa.AddEvent(elseEnd, new CfEvent(CfEventKind.EndIf));
+                handled[prevFalse] = true;
+            }
+            else
+            {
+                int endIfLine = Math.Max(0, Math.Min(falseTarget - 1, n - 1));
+                cfa.AddEvent(endIfLine, new CfEvent(CfEventKind.EndIf));
+            }
+        }
+
+        /// <summary>
+        /// Resolves the common EndIf line index for an ElseIf chain
+        /// and marks all inner exit-jumps as handled.
+        /// </summary>
+        private static int ResolveChainEnd(
+            ControlFlowAnalyzer cfa,
+            List<AsmCode> lines,
+            int n,
+            bool[] handled,
+            List<IfSeg> chain)
+        {
+            int commonEnd = -1;
+
+            int pf0 = chain[0].FalseTarget - 1;
+            if (pf0 >= 0 && pf0 < n && lines[pf0].OPCode?.Value == "jmp")
+            {
+                commonEnd = AbsTarget(lines, pf0) - 1;
+                handled[pf0] = true;
+            }
+
+            for (int ci = 1; ci < chain.Count; ci++)
+            {
+                int pfN = chain[ci].FalseTarget - 1;
+                if (pfN >= 0 && pfN < n && lines[pfN].OPCode?.Value == "jmp")
+                {
+                    handled[pfN] = true;
+                    if (commonEnd < 0) commonEnd = AbsTarget(lines, pfN) - 1;
+                }
+            }
+
+            if (commonEnd < 0)
+                commonEnd = chain[chain.Count - 1].FalseTarget - 1;
+
+            return Math.Max(0, Math.Min(commonEnd, n - 1));
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Merges control-flow keywords + indentation directly into PSCCode.
-    // ─────────────────────────────────────────────────────────────────────
+
+    // =========================================================================
+    // ControlFlowCodeGen — merges CfEvents + indentation into PSCCode
+    // =========================================================================
+
     public static class ControlFlowCodeGen
     {
+        // ─────────────────────────────────────────────────────────────────────
+        // Condition builder
+        // ─────────────────────────────────────────────────────────────────────
+
         private static string CmpOp(string op)
         {
             switch (op)
@@ -787,237 +960,265 @@ namespace PexInterface
             }
         }
 
-        private static string BuildCondition(DecompileTracker tracker, int lineIndex, List<PexString> tempStrings)
+        private static string BuildCondition(
+            DecompileTracker Tracker,
+            int LineIndex,
+            List<PexString> TempStrings)
         {
-            var line = tracker.Lines[lineIndex];
-            string op = line.OPCode?.Value ?? "";
-            var head = line.Links?.GetHead();
+            var Head = Tracker.Lines[LineIndex].Links?.GetHead();
 
-            // cmp argument layout: [dest] [left] [right]
-            string left = ResolveTemp(tracker, lineIndex, head?.Next?.GetValue() ?? "?", tempStrings);
-            string right = ResolveTemp(tracker, lineIndex, head?.Next?.Next?.GetValue() ?? "?", tempStrings);
+            // cmp layout: [dest] [left] [right]
+            string Left = ResolveTemp(Tracker, LineIndex, Head?.Next?.GetValue() ?? "?", TempStrings);
+            string Right = ResolveTemp(Tracker, LineIndex, Head?.Next?.Next?.GetValue() ?? "?", TempStrings);
+            string OPCode = Tracker.Lines[LineIndex].OPCode?.Value ?? "";
 
-            return string.Format("{0} {1} {2}", left, CmpOp(op), right);
+            return string.Format("{0} {1} {2}", Left, CmpOp(OPCode), Right);
         }
 
-        // Walk backwards from fromLine to substitute a temp with its producing expression
-        public static string ResolveTemp(DecompileTracker tracker, int fromLine, string name, List<PexString> tempStrings)
+        // ─────────────────────────────────────────────────────────────────────
+        // Temp resolver — walk backwards and inline the producing expression
+        // ─────────────────────────────────────────────────────────────────────
+
+        public static string ResolveTemp(
+            DecompileTracker Tracker,
+            int FromLine,
+            string Name,
+            List<PexString> TempStrings)
         {
-            if (!name.StartsWith("temp")) return name;
+            if (!Name.StartsWith("temp")) return Name;
 
-            for (int j = fromLine - 1; j >= 0; j--)
+            for (int j = FromLine - 1; j >= 0; j--)
             {
-                var L = tracker.Lines[j];
-                string lop = L.OPCode?.Value ?? "";
+                var Line = Tracker.Lines[j];
+                string LineOP = Line.OPCode?.Value ?? "";
 
-                if (lop == "callmethod")
+                switch (LineOP)
                 {
-                    var lh = L.Links.GetHead();
-                    var callerNode = lh?.Next;
-                    var retNode = callerNode?.Next;
-                    if (retNode == null || retNode.GetValue() != name) continue;
+                    case "callmethod":
+                        {
+                            var LineHead = Line.Links.GetHead();
+                            var CallerNode = LineHead?.Next;
+                            var RetNode = CallerNode?.Next;
+                            if (RetNode == null || RetNode.GetValue() != Name) continue;
 
-                    L.PSCCode = ""; // consumed: this line no longer emits standalone code
+                            Line.PSCCode = ""; // consumed
 
-                    string funcName = lh.GetValue();
-                    string callerRaw = callerNode?.GetValue() ?? "Self";
-                    string caller = (callerNode != null && callerNode.IsSelf())
-                                       ? "Self"
-                                       : ResolveTemp(tracker, j, callerRaw, tempStrings);
-                    if (caller.EndsWith("_var"))
-                        caller = caller.Substring(0, caller.Length - "_var".Length);
+                            string FuncName = LineHead.GetValue();
+                            string CallerRaw = CallerNode?.GetValue() ?? "Self";
+                            string Caller = (CallerNode != null && CallerNode.IsSelf())
+                                                   ? "Self"
+                                                   : ResolveTemp(Tracker, j, CallerRaw, TempStrings);
+                            if (Caller.EndsWith("_var"))
+                                Caller = Caller.Substring(0, Caller.Length - "_var".Length);
 
-                    var paramList = new List<string>();
-                    // [3] is NumParams — skip it, params start at [4]
-                    var node = retNode.Next?.Next;
-                    while (node != null)
-                    {
-                        if (!node.IsNull())
-                            paramList.Add(ResolveTemp(tracker, j, node.GetValue(), tempStrings));
-                        node = node.Next;
-                    }
-                    return string.Format("{0}.{1}({2})", caller, funcName, string.Join(", ", paramList));
-                }
+                            var ParamList = BuildResolvedParams(Tracker, j, RetNode.Next?.Next, TempStrings);
+                            return string.Format("{0}.{1}({2})", Caller, FuncName, string.Join(", ", ParamList));
+                        }
 
-                if (lop == "callstatic")
-                {
-                    var lh = L.Links.GetHead();
-                    var FuncNode = lh?.Next;
-                    var RetNode = FuncNode?.Next;
-                    if (RetNode == null || RetNode.GetValue() != name) continue;
+                    case "callstatic":
+                        {
+                            var LineHead = Line.Links.GetHead();
+                            var FuncNode = LineHead?.Next;
+                            var RetNode = FuncNode?.Next;
+                            if (RetNode == null || RetNode.GetValue() != Name) continue;
 
-                    L.PSCCode = ""; // consumed
+                            Line.PSCCode = ""; // consumed
 
-                    string ClassName = PapyrusAsmDecoder.CapitalizeFirst(lh.GetValue());
-                    string FuncName = FuncNode?.GetValue() ?? "?";
+                            string ClassName = PapyrusAsmDecoder.CapitalizeFirst(LineHead.GetValue());
+                            string FuncName = FuncNode?.GetValue() ?? "?";
 
-                    var ParamList = new List<string>();
-                    // [3] is NumParams — skip it, params start at [4]
-                    var Node = RetNode.Next?.Next;
-                    while (Node != null)
-                    {
-                        if (!Node.IsNull())
-                            ParamList.Add(ResolveTemp(tracker, j, Node.GetValue(), tempStrings));
-                        Node = Node.Next;
-                    }
-                    return string.Format("{0}.{1}({2})", ClassName, FuncName, string.Join(", ", ParamList));
-                }
-                if (lop == "strcat")
-                {
-                    var lh = L.Links.GetHead();
-                    if (lh.GetValue() != name) continue;
-                    L.PSCCode = ""; // consumed: inline into caller
+                            var ParamList = BuildResolvedParams(Tracker, j, RetNode.Next?.Next, TempStrings);
+                            return string.Format("{0}.{1}({2})", ClassName, FuncName, string.Join(", ", ParamList));
+                        }
 
-                    string left = ResolveTemp(tracker, j, lh.Next?.GetValue() ?? "?", tempStrings);
-                    string right = ResolveTemp(tracker, j, lh.Next?.Next?.GetValue() ?? "?", tempStrings);
-                    return string.Format("{0} + {1}", left, right);
-                }
-                // cast: dest = src — inline src as the expression for dest
-                if (lop == "cast")
-                {
-                    var lh = L.Links.GetHead();
-                    if (lh.GetValue() != name) continue;
-                    L.PSCCode = ""; // consumed
-                    return ResolveTemp(tracker, j, lh.Next?.GetValue() ?? "?", tempStrings);
-                }
+                    case "strcat":
+                        {
+                            var LineHead = Line.Links.GetHead();
+                            if (LineHead.GetValue() != Name) continue;
+                            Line.PSCCode = ""; // consumed
 
-                if (lop == "propget")
-                {
-                    var lh = L.Links.GetHead();
-                    var ObjNode = lh.Next;
-                    var DestNode = ObjNode?.Next;
-                    if (DestNode == null || DestNode.GetValue() != name) continue;
-                    L.PSCCode = ""; // consumed
+                            string Left = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                            string Right = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
+                            return string.Format("{0} + {1}", Left, Right);
+                        }
 
-                    string PropName = lh.GetValue();
-                    string Obj = ObjNode?.GetValue() ?? "Self";
-                    if (Obj.ToLower() == "self")
-                        Obj = "Self";
+                    case "cast":
+                        {
+                            var LineHead = Line.Links.GetHead();
+                            if (LineHead.GetValue() != Name) continue;
+                            Line.PSCCode = ""; // consumed
+                            return ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                        }
 
-                    return string.Format("{0}.{1}", Obj, PropName);
-                }
+                    case "propget":
+                        {
+                            var LineHead = Line.Links.GetHead();
+                            var ObjNode = LineHead.Next;
+                            var DestNode = ObjNode?.Next;
+                            if (DestNode == null || DestNode.GetValue() != Name) continue;
+                            Line.PSCCode = ""; // consumed
 
-                if (lop == "array_getelement")
-                {
-                    var lh = L.Links.GetHead();
-                    if (lh.GetValue() != name) continue;
-                    L.PSCCode = "";
-                    string arr = ResolveTemp(tracker, j, lh.Next?.GetValue() ?? "?", tempStrings);
-                    string idx = ResolveTemp(tracker, j, lh.Next?.Next?.GetValue() ?? "?", tempStrings);
-                    return string.Format("{0}[{1}]", arr, idx);
-                }
+                            string PropName = LineHead.GetValue();
+                            string Obj = (ObjNode?.GetValue() ?? "Self").ToLower() == "self"
+                                                  ? "Self" : ObjNode?.GetValue() ?? "Self";
+                            return string.Format("{0}.{1}", Obj, PropName);
+                        }
 
-                if (lop == "assign")
-                {
-                    var lh = L.Links.GetHead();
-                    if (lh.GetValue() != name) continue;
-                    return ResolveTemp(tracker, j, lh.Next?.GetValue() ?? "?", tempStrings);
+                    case "array_getelement":
+                        {
+                            var LineHead = Line.Links.GetHead();
+                            if (LineHead.GetValue() != Name) continue;
+                            Line.PSCCode = ""; // consumed
+
+                            string Array = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                            string Index = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
+                            return string.Format("{0}[{1}]", Array, Index);
+                        }
+
+                    case "assign":
+                        {
+                            var LineHead = Line.Links.GetHead();
+                            if (LineHead.GetValue() != Name) continue;
+                            return ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                        }
                 }
             }
-            return name;
+
+            return Name;
         }
 
-        /// <summary>
-        /// Single linear pass: prepend control-flow keywords (with indentation)
-        /// to PSCCode, then inline any remaining temp references in body text.
-        /// After this runs, SpaceCount is 0 on every line.
-        /// </summary>
-        public static void ApplyControlFlow(DecompileTracker tracker, List<PexString> tempStrings)
+        private static List<string> BuildResolvedParams(
+            DecompileTracker Tracker,
+            int FromLine,
+            AsmLink StartNode,
+            List<PexString> TempStrings)
         {
-            var lines = tracker.Lines;
-            int n = lines.Count;
-
-            var cfa = ControlFlowAnalyzer.Analyze(lines, li => BuildCondition(tracker, li, tempStrings));
-            int depth = 0;
-
-            for (int i = 0; i < n; i++)
+            var List = new List<string>();
+            var Node = StartNode;
+            while (Node != null)
             {
-                var asmLine = lines[i];
-                string op = asmLine.OPCode?.Value ?? "";
-                var events = cfa.GetEvents(i);
+                if (!Node.IsNull())
+                    List.Add(ResolveTemp(Tracker, FromLine, Node.GetValue(), TempStrings));
+                Node = Node.Next;
+            }
+            return List;
+        }
 
-                var sb = new StringBuilder();
+        // ─────────────────────────────────────────────────────────────────────
+        // Main code-gen pass
+        // ─────────────────────────────────────────────────────────────────────
 
-                if (events != null)
+        /// <summary>
+        /// Single linear pass over all instructions:
+        ///   1. Prepend styled control-flow keywords (If / Else / EndIf / While / EndWhile).
+        ///   2. Inline any remaining temp references in body expressions.
+        ///   3. Apply indentation.
+        /// After this pass, SpaceCount is 0 on every line (indentation is embedded).
+        /// </summary>
+        public static void ApplyControlFlow(
+            DecompileTracker Tracker,
+            List<PexString> TempStrings,
+            ICodeStyle Style)
+        {
+            var Lines = Tracker.Lines;
+            int Length = Lines.Count;
+
+            var CFA = ControlFlowAnalyzer.Analyze(
+                            Lines,
+                            LineIndex => BuildCondition(Tracker, LineIndex, TempStrings));
+            int Depth = 0;
+
+            for (int i = 0; i < Length; i++)
+            {
+                var AsmLine = Lines[i];
+                string OPCode = AsmLine.OPCode?.Value ?? "";
+                var Events = CFA.GetEvents(i);
+
+                var NStringBuilder = new StringBuilder();
+
+                // ── 1. Emit control-flow keywords ─────────────────────────────
+                if (Events != null)
                 {
-                    foreach (var ev in events)
+                    foreach (var Event in Events)
                     {
-                        switch (ev.Kind)
+                        switch (Event.Kind)
                         {
                             case CfEventKind.EndIf:
-                                depth = Math.Max(0, depth - 1);
-                                sb.AppendLine(Indent(depth) + "}");
+                                Depth = Math.Max(0, Depth - 1);
+                                NStringBuilder.AppendLine(Style.Indent(Depth) + Style.EndIf());
                                 break;
 
                             case CfEventKind.EndWhile:
-                                depth = Math.Max(0, depth - 1);
-                                sb.AppendLine(Indent(depth) + "}");
-                                asmLine.PSCCode = ""; // back-jump jmp line emits nothing
+                                Depth = Math.Max(0, Depth - 1);
+                                NStringBuilder.AppendLine(Style.Indent(Depth) + Style.EndWhile());
+                                AsmLine.PSCCode = ""; // back-jump jmp emits nothing
                                 break;
 
                             case CfEventKind.ElseBegin:
-                                depth = Math.Max(0, depth - 1);
-                                sb.AppendLine(Indent(depth) + "Else");
-                                depth++;
+                                Depth = Math.Max(0, Depth - 1);
+                                NStringBuilder.AppendLine(Style.Indent(Depth) + Style.Else());
+                                Depth++;
                                 break;
 
                             case CfEventKind.ElseIfBegin:
-                                depth = Math.Max(0, depth - 1);
-                                sb.AppendLine(Indent(depth) + "Else\nIf " + ev.Condition);
-                                depth++;
-                                asmLine.PSCCode = ""; // cmp instruction itself emits nothing
+                                Depth = Math.Max(0, Depth - 1);
+                                NStringBuilder.AppendLine(Style.Indent(Depth) + Style.ElseIf(Event.Condition));
+                                Depth++;
+                                AsmLine.PSCCode = ""; // cmp instruction emits nothing
                                 break;
 
                             case CfEventKind.IfBegin:
-                                sb.AppendLine(Indent(depth) + "If (" + ev.Condition + "){");
-                                depth++;
-                                asmLine.PSCCode = "";
+                                NStringBuilder.AppendLine(Style.Indent(Depth) + Style.If(Event.Condition));
+                                Depth++;
+                                AsmLine.PSCCode = "";
                                 break;
 
                             case CfEventKind.WhileBegin:
-                                sb.AppendLine(Indent(depth) + "While (" + ev.Condition + "){");
-                                depth++;
-                                asmLine.PSCCode = "";
+                                NStringBuilder.AppendLine(Style.Indent(Depth) + Style.While(Event.Condition));
+                                Depth++;
+                                AsmLine.PSCCode = "";
                                 break;
                         }
                     }
                 }
 
-                // Jump opcodes are fully absorbed by control-flow events
-                if (op == "jmpf" || op == "jmpt" || op == "jmp")
-                    asmLine.PSCCode = "";
+                // Jump opcodes are fully consumed by control-flow events above
+                if (OPCode == "jmpf" || OPCode == "jmpt" || OPCode == "jmp")
+                    AsmLine.PSCCode = "";
 
-                // Inline remaining temp references in the body expression
-                if (!string.IsNullOrEmpty(asmLine.PSCCode))
+                // ── 2. Inline remaining temp references in body expressions ───
+                if (!string.IsNullOrEmpty(AsmLine.PSCCode))
                 {
-                    string code = asmLine.PSCCode;
-                    int eqPos = code.IndexOf('=');
-                    if (eqPos >= 0)
+                    string Code = AsmLine.PSCCode;
+                    int EqPos = Code.IndexOf('=');
+
+                    if (EqPos >= 0)
                     {
-                        string lhs = code.Substring(0, eqPos + 1);
-                        string rhs = Regex.Replace(code.Substring(eqPos + 1), @"\btemp\d+\b",
-                                         m => ResolveTemp(tracker, i, m.Value, tempStrings));
-                        code = lhs + rhs;
+                        string Lhs = Code.Substring(0, EqPos + 1);
+                        string Rhs = Regex.Replace(
+                            Code.Substring(EqPos + 1),
+                            @"\btemp\d+\b",
+                            Match => ResolveTemp(Tracker, i, Match.Value, TempStrings));
+                        Code = Lhs + Rhs;
                     }
                     else
                     {
-                        code = Regex.Replace(code, @"\btemp\d+\b",
-                                   m => ResolveTemp(tracker, i, m.Value, tempStrings));
+                        Code = Regex.Replace(
+                            Code,
+                            @"\btemp\d+\b",
+                            Match => ResolveTemp(Tracker, i, Match.Value, TempStrings));
                     }
-                    asmLine.PSCCode = code;
+
+                    AsmLine.PSCCode = Code;
                 }
 
-                // Append the body line at the current depth
-                if (!string.IsNullOrEmpty(asmLine.PSCCode))
-                    sb.Append(Indent(depth) + asmLine.PSCCode.Trim());
+                // ── 3. Append body line at current depth ──────────────────────
+                if (!string.IsNullOrEmpty(AsmLine.PSCCode))
+                    NStringBuilder.Append(Style.Indent(Depth) + AsmLine.PSCCode.Trim());
 
-                // Write back: indentation is now embedded in PSCCode
-                asmLine.PSCCode = sb.ToString().TrimEnd('\r', '\n');
-                asmLine.SpaceCount = 0;
+                AsmLine.PSCCode = NStringBuilder.ToString().TrimEnd('\r', '\n');
+                AsmLine.SpaceCount = 0;
             }
         }
-
-
-        private static string Indent(int depth) => new string(' ', depth * 4);
     }
 }
