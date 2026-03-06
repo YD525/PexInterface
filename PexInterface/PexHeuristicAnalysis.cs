@@ -251,9 +251,24 @@ namespace PexInterface
 
                     string GenLine = "";
 
+                    string AutoStr = "";
+                    if (GetFunc.StateName.Length > 0)
+                    {
+                        if (Style == CodeGenStyle.CSharp)
+                        {
+                            AutoStr += "public class " + GetFunc.StateName + "\n{";
+                        }
+                        else
+                        {
+                            AutoStr += string.Format("State {0}\n", GetFunc.StateName);
+                        }
+
+                        Content.AppendLine(AutoStr);
+                    }
+
                     if (Style == CodeGenStyle.Papyrus)
                     {
-                        GenLine = string.Format(GenSpace(1) + "{0} Function {1}({2})", GetFunc.ReturnType, GetFunc.FunctionName, GenParams);
+                        GenLine = string.Format(GenSpace(1) + "{0} Function {1}({2})", GetFunc.ReturnType,GetFunc.FunctionName, GenParams);
                     }
                     else
                     if (Style == CodeGenStyle.CSharp)
@@ -263,7 +278,20 @@ namespace PexInterface
                         {
                             TempReturnType = "void";
                         }
-                        GenLine = string.Format(GenSpace(1) + "public {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
+
+                        if (GetFunc.IsGlobal)
+                        {
+                            GenLine = string.Format(GenSpace(1) + "public {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
+                        }
+                        else
+                        if (GetFunc.IsNative)
+                        {
+                            GenLine = string.Format(GenSpace(1) + "public static {0} {1}({2})\n", TempReturnType,GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
+                        }
+                        else
+                        {
+                            GenLine = string.Format(GenSpace(1) + "private static {0} {1}({2})\n", TempReturnType,GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
+                        }
                     }
 
                     Content.AppendLine(GenLine);
@@ -306,6 +334,18 @@ namespace PexInterface
                     if (Style == CodeGenStyle.CSharp)
                     {
                         Content.AppendLine(GenSpace(1) + "}\n");
+                    }
+
+                    if (AutoStr.Length > 0)
+                    {
+                        if (Style == CodeGenStyle.CSharp)
+                        {
+                            Content.AppendLine("}\n");
+                        }
+                        else
+                        {
+                            Content.AppendLine("EndState\n");
+                        }
                     }
 
                 }
