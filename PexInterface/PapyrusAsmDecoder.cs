@@ -478,6 +478,7 @@ public class PscCls
 public class FunctionBlock
 {
     public DecompileTracker TrackerRef = new DecompileTracker();
+    public Dictionary<ushort,StringFlowRecord> StringFlower = new Dictionary<ushort,StringFlowRecord>();
     public string FunctionName = "";
     public List<LocalVariable> Params = new List<LocalVariable>();
     public string ReturnType = "";
@@ -540,6 +541,7 @@ public class AsmLink
 {
     private TokenSeparator Separator = TokenSeparator.Null;
     private string Value = null;
+    public ushort StringID = 0;
     public AsmInFo InFo = null;
     public string UPDateValue = null;
     private AsmLink Head = null;
@@ -689,13 +691,14 @@ public class AsmLink
         }
         return false;
     }
-    public AsmLink SetValue(string Value, AsmInFo InFo, TokenSeparator Separator)
+    public AsmLink SetValue(ushort StringID,string Value, AsmInFo InFo, TokenSeparator Separator)
     {
         if (this.Value == null)
         {
             this.Value = Value;
             this.InFo = InFo;
             this.Separator = Separator;
+            this.StringID = StringID;
             Tail = this;
             Head = null;
 
@@ -850,7 +853,7 @@ public class AsmLink
             if (Order.Value.StartsWith("::"))
             {
                 PendingSeparator = TokenSeparator.DoubleColon;
-                var CurrentLink = Links.SetValue(Order.Value.Substring("::".Length),Order.InFo,PendingSeparator);
+                var CurrentLink = Links.SetValue(0,Order.Value.Substring("::".Length),Order.InFo,PendingSeparator);
 
                 if(Order.HasIndex)
                 if (StrPos.Contains(Order.Index))
@@ -859,13 +862,14 @@ public class AsmLink
                     NPexString.Value = Order.DefValue;
                     NPexString.Index = Order.Index;
                     BlockRef.Strings.Add(new PexStringExtend(NPexString,CurrentLink));
+                    CurrentLink.StringID = Order.Index;
                     StrPos.Remove(Order.Index);
                 }
             }
             else
             {
                 PendingSeparator = TokenSeparator.Space;
-                var CurrentLink = Links.SetValue(Order.Value,Order.InFo,PendingSeparator);
+                var CurrentLink = Links.SetValue(0,Order.Value,Order.InFo,PendingSeparator);
 
                 if (Order.HasIndex)
                 if (StrPos.Contains(Order.Index))
@@ -874,6 +878,7 @@ public class AsmLink
                     NPexString.Value = Order.DefValue;
                     NPexString.Index = Order.Index;
                     BlockRef.Strings.Add(new PexStringExtend(NPexString, CurrentLink));
+                    CurrentLink.StringID = Order.Index;
                     StrPos.Remove(Order.Index);
                 }
             }

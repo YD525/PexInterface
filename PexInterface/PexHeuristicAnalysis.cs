@@ -438,7 +438,22 @@ namespace PexInterface
 
         public void AnalysisStrings()
         {
+            foreach (var GetKey in this.Strings.Keys)
+            {
+                var FuncStrs = this.Strings[GetKey];
+                for (int i = 0; i < FuncStrs.Count; i++)
+                {
+                    var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
 
+                    FuncStrs[i].Score = -5;
+                    
+                }
+            }
+        }
+
+        public int EvaluationScore()
+        {
+            return 0;
         }
 
         public int SaveAll(string Output)
@@ -492,7 +507,7 @@ namespace PexInterface
         {
             public string UniqueKey = "";
             public FunctionBlock FunctionRef = null;
-            public int StringTableID = 0;
+            public ushort StringTableID = 0;
             public int Score = 0;
             public string Original = "";
             public string Translated = "";

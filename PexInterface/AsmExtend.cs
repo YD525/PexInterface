@@ -122,6 +122,15 @@ namespace PexInterface
             Pass2_InferArrayTypes(TrackerRef, ParentCls, Length);
             Pass3_ResolveTypePlaceholders(TrackerRef, ParentCls, Func, TempStrings, Length);
             Pass4_ControlFlow(TrackerRef, TempStrings, CodeStyle);
+
+            Func.StringFlower = new Dictionary<ushort, StringFlowRecord>();
+            foreach (var GetFlow in StringFlowAnalyzer.Analyze(TrackerRef, ParentCls, Func))
+            {
+                if (!Func.StringFlower.ContainsKey(GetFlow.StringID))
+                {
+                    Func.StringFlower.Add(GetFlow.StringID,GetFlow);
+                }
+            }
         }
 
 

@@ -12,15 +12,16 @@ namespace PEXInterfaceUnitTest
         {
             PexHeuristicAnalysis Analysis = new PexHeuristicAnalysis();
             Analysis.Core.LoadPex(PexPath).GetPsc(out string Psc, false, CodeGenStyle.CSharp)
-            .ReadStrings().GetStrings(out List<PexStringItem> Strings);
+            .ReadStrings().GetStrings(out List<PexStringItem> Strings).AnalysisStrings();
 
-            foreach (var GetStr in Strings)
-            {
-                Console.WriteLine(string.Format("Key:{0},Value:{1}",GetStr.UniqueKey,GetStr.Original));
-            }
+            //foreach (var GetStr in Strings)
+            //{
+            //    Console.WriteLine(string.Format("Key:{0},Value:{1}",GetStr.UniqueKey,GetStr.Original));
+            //}
+
+            Console.WriteLine(Psc);
 
             return Analysis;
-            //Console.WriteLine(Psc);
         }
         static void Main(string[] args)
         {
