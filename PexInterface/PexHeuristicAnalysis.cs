@@ -42,6 +42,15 @@ namespace PexInterface
             }
           
         }
+        public object FileSaveLocker = new object();
+        public PexAnalysisPipeline SavePex(string Path,out int SaveState)
+        {
+            lock (FileSaveLocker)
+            {
+                SaveState = this.HeuristicCore.SaveAll(Path);
+            }
+            return this;
+        }
 
         public PexAnalysisPipeline GetReaderPointer(out IntPtr Pointer)
         {

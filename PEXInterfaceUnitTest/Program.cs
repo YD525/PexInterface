@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using PexInterface;
 using static PexInterface.PexHeuristicAnalysis;
@@ -13,6 +14,15 @@ namespace PEXInterfaceUnitTest
             PexHeuristicAnalysis Analysis = new PexHeuristicAnalysis();
             Analysis.Core.LoadPex(PexPath).GetPsc(out string Psc, false, CodeGenStyle.CSharp)
             .ReadStrings().AnalysisStrings().GetStrings(out List<PexStringItem> Strings);
+
+            for (int i = 0; i < Strings.Count; i++)
+            {
+                if (Strings[i].IsCanTranslate())
+                {
+                    Strings[i].Translated = Strings[i].Original + "_" + i.ToString();
+                }
+            }
+           
 
             foreach (var GetStr in Strings)
             {
@@ -57,6 +67,18 @@ namespace PEXInterfaceUnitTest
                 }).Start();
             }
 
+            //Test the changes and save the file.
+
+            //for (int i = 0; i < Strings.Count; i++)
+            //{
+            //    if (Strings[i].IsCanTranslate())
+            //    {
+            //        Strings[i].Translated = Strings[i].Original + "_" + i.ToString();
+            //    }
+            //}
+
+            //Analysis.Core.SavePex(PexPath,out int SaveState).Close();
+
             if (false)
             {
                 //Single mode
@@ -66,7 +88,7 @@ namespace PEXInterfaceUnitTest
             }
 
             //LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
-            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestMod\\Yet Another Difficulty Mod-80224-3-0-1-1718235810\\Scripts\\YetAnotherDifficultyMod.pex");
+            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestMod\\Simple Mod Item Spawner - ITALIA-144062-1-50-1741524025\\scripts\\SimpleItemSpawnerMCM.pex");
             Console.ReadKey();
            
         }
