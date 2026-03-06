@@ -130,7 +130,7 @@ namespace PexInterface
             return Space;
         }
 
-        public List<string> DangerFunctions = new List<string>() { "GetFormFromFile".ToLower(), "FromFile".ToLower(), "IsPluginInstalled".ToLower() };
+        public List<string> DangerFunctions = new List<string>() { "GetFormFromFile".ToLower(), "FromFile".ToLower(), "IsPluginInstalled".ToLower(), "GetModByName".ToLower(), "GetActorValue".ToLower() };
         public void Init()
         {
             FuncNameCheck = new FuncRule();
