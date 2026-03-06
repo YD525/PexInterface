@@ -24,6 +24,7 @@ namespace PEXInterfaceUnitTest
         }
         static void Main(string[] args)
         {
+            //Oh, and by the way, the GetPsc() method must be executed after LoadPex, because only in this way can the score for each translatable field be evaluated.
             if (false)
             {
                 //Multi Mode
