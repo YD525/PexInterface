@@ -9,7 +9,7 @@ namespace PexInterface
     // Licensed under the LGPL3.0 License.
 
     /// <summary>
-    /// 底层 P/Invoke 绑定。所有函数第一个参数均为 handle（由 C_CreateInstance 返回的指针）。
+    /// The underlying P/Invoke binding. The first parameter of all functions is a handle (a pointer returned by C_CreateInstance).
     /// </summary>
     public static class PexInterop
     {
@@ -19,7 +19,7 @@ namespace PexInterface
 
         #region P/Invoke Declarations
 
-        // 版本
+
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr C_GetVersion();
 
@@ -251,6 +251,13 @@ namespace PexInterface
             PexInterop.C_Close(_Handle);
             PexInterop.C_DestroyInstance(_Handle);
             this._Handle = PexInterop.C_CreateInstance();
+
+            this.PexPath = string.Empty;
+            this.Header = new PexHeader();
+            this.StringTable.Clear();
+            this.Objects.Clear();
+            this.UserFlags.Clear();
+            this.DebugInfo = new PexDebugInfo();
         }
 
         public void LoadPex(string path)
