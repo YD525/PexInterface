@@ -15,14 +15,13 @@ namespace PEXInterfaceUnitTest
             Analysis.Core.LoadPex(PexPath).GetPsc(out string Psc, false, CodeGenStyle.CSharp)
             .ReadStrings().AnalysisStrings().GetStrings(out List<PexStringItem> Strings);
 
-            for (int i = 0; i < Strings.Count; i++)
-            {
-                if (Strings[i].IsCanTranslate())
-                {
-                    Strings[i].Translated = Strings[i].Original + "_" + i.ToString();
-                }
-            }
-           
+            //for (int i = 0; i < Strings.Count; i++)
+            //{
+            //    if (Strings[i].IsCanTranslate())
+            //    {
+            //        Strings[i].Translated = Strings[i].Original + "_" + i.ToString();
+            //    }
+            //}
 
             foreach (var GetStr in Strings)
             {
