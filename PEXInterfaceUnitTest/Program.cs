@@ -63,14 +63,8 @@ namespace PEXInterfaceUnitTest
                .ReadStrings().GetStrings(out List<PexStringItem> StringsC);
             }
 
-            //foreach (var GetStr in Strings)
-            //{
-            //    Console.WriteLine(string.Format("Key:{0},Value:{1}", GetStr.UniqueKey, GetStr.Original));
-            //}
-
-            ////_wetquestscript.pex
-            ////LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
-            //var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex");
+            //LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
+            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
             Console.ReadKey();
            
         }
