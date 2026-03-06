@@ -497,7 +497,7 @@ namespace PexInterface
                         }
                     }
 
-                    FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
+                    FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(SetFlow.SourceLineIndex, FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
                 }
             }
         }
@@ -582,21 +582,24 @@ namespace PexInterface
                 return false;
             }
 
-            public static string GenUniqueKey(int Score, FunctionBlock Func, PexStringExtend StringItem)
+            public static string GenUniqueKey(int LineIndex,int Score, FunctionBlock Func, PexStringExtend StringItem)
             {
                 var GetHead = StringItem.Link.GetHead();
                 var GetPrev = StringItem.Link.Prev;
                 var GetNext = StringItem.Link.Next;
 
+                var GetTail = StringItem.Link.GetTail();
+
                 string AutoMerge = string.Join("_", new[] {
                     GetHead?.GetValue(),
                     GetPrev?.GetValue(),
-                    GetNext?.GetValue()
+                    GetNext?.GetValue(),
+                    GetTail?.GetValue()
                 }.Where(s => !string.IsNullOrEmpty(s)));
 
                 //AutoMerge += "_" + StringItem.Index;
 
-                string SetKey = Crc32Helper.ComputeCrc32(Score + "_" + Func.FunctionName + "_" + AutoMerge);
+                string SetKey = Crc32Helper.ComputeCrc32(Score + "_" + LineIndex + "_" + Func.FunctionName + "_" + AutoMerge);
                 return SetKey;
             }
 
