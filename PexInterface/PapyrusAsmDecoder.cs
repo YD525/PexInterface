@@ -372,10 +372,10 @@ public class PapyrusAsmDecoder
             if (Index < 0) continue;
 
             var StrEntry = tempStrings[Index];
-            if (StrEntry.Index != Index)
-            {
-                GC.Collect();
-            }
+            //if (StrEntry.Index != Index)
+            //{
+            //    GC.Collect();
+            //}
 
             var Order = new AsmOrder(StrEntry.Index,StrEntry.Value.Trim());
 

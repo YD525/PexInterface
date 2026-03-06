@@ -17,7 +17,7 @@ namespace PEXInterfaceUnitTest
 
             foreach (var GetStr in Strings)
             {
-                Console.WriteLine(GetStr.Original);
+                Console.WriteLine(string.Format("Key:{0},Value:{1}",GetStr.UniqueKey,GetStr.Original));
             }
             //Console.WriteLine(Psc);
         }

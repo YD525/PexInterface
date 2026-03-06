@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Runtime.Remoting.Messaging;
+using System.Linq;
 using System.Text;
 using static PexInterface.PexHeuristicAnalysis;
 using static PexInterface.PexReader;
@@ -424,9 +423,22 @@ namespace PexInterface
             public string Original = "";
             public string Translated = "";
 
-            public static string GenUniqueKey(FunctionBlock Func)
+            public static string GenUniqueKey(FunctionBlock Func,PexStringExtend StringItem)
             {
-                return string.Empty;
+                var GetHead = StringItem.Link.GetHead();
+                var GetPrev = StringItem.Link.Prev;
+                var GetNext = StringItem.Link.Next;
+
+                string AutoMerge = string.Join("_", new[] {
+                    GetHead?.GetValue(),
+                    GetPrev?.GetValue(),
+                    GetNext?.GetValue()
+                }.Where(s => !string.IsNullOrEmpty(s)));
+
+                //AutoMerge += "_" + StringItem.Index;
+
+                string SetName = Func.FunctionName +"_"+ AutoMerge;
+                return SetName;
             }
 
             public PexStringItem(FunctionBlock FunctionRef, PexStringExtend Item)
@@ -435,7 +447,7 @@ namespace PexInterface
                 this.StringTableID = Item.Index;
                 this.Original = string.Copy(Item.Value);
 
-                this.UniqueKey = GenUniqueKey(FunctionRef);
+                this.UniqueKey = GenUniqueKey(FunctionRef,Item);
                 GC.Collect();
             }
         }
