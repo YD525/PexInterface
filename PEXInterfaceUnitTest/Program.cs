@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using PexInterface;
 using static PexInterface.PexHeuristicAnalysis;
 
@@ -24,16 +25,32 @@ namespace PEXInterfaceUnitTest
         static void Main(string[] args)
         {
             //Multi-file reading test
-            PexHeuristicAnalysis Analysis1st = new PexHeuristicAnalysis();
-            Analysis1st.Core.LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex").GetPsc(out string Psc, false, CodeGenStyle.CSharp)
-            .ReadStrings().GetStrings(out List<PexStringItem> Strings).GetReaderPointer(out IntPtr Ptr1st);
+            new Thread(() =>
+            {
+                PexHeuristicAnalysis Analysis1st = new PexHeuristicAnalysis();
+                Analysis1st.Core.LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex").GetPsc(out string Psc, false, CodeGenStyle.CSharp)
+                .ReadStrings().GetStrings(out List<PexStringItem> Strings).GetReaderPointer(out IntPtr Ptr1st);
 
-            PexHeuristicAnalysis Analysis2nd = new PexHeuristicAnalysis();
-            Analysis2nd.Core.LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex").GetPsc(out string PscA, false, CodeGenStyle.CSharp)
-            .ReadStrings().GetStrings(out List<PexStringItem> StringsA).GetReaderPointer(out IntPtr Ptr2nd);
+                Console.WriteLine($"Ptr1st = 0x{Ptr1st.ToInt64():X}");
+            }).Start();
 
-            Console.WriteLine($"Ptr1st = 0x{Ptr1st.ToInt64():X}");
-            Console.WriteLine($"Ptr2nd = 0x{Ptr2nd.ToInt64():X}");
+            new Thread(() =>
+            {
+                PexHeuristicAnalysis Analysis2nd = new PexHeuristicAnalysis();
+                Analysis2nd.Core.LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex").GetPsc(out string PscA, false, CodeGenStyle.CSharp)
+                .ReadStrings().GetStrings(out List<PexStringItem> StringsA).GetReaderPointer(out IntPtr Ptr2nd);
+
+                Console.WriteLine($"Ptr2nd = 0x{Ptr2nd.ToInt64():X}");
+            }).Start();
+
+            new Thread(() =>
+            {
+                PexHeuristicAnalysis Analysis3rd = new PexHeuristicAnalysis();
+                Analysis3rd.Core.LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex").GetPsc(out string PscA, false, CodeGenStyle.CSharp)
+                .ReadStrings().GetStrings(out List<PexStringItem> StringsA).GetReaderPointer(out IntPtr Ptr3rd);
+
+                Console.WriteLine($"Ptr2nd = 0x{Ptr3rd.ToInt64():X}");
+            }).Start();
 
             //foreach (var GetStr in Strings)
             //{
