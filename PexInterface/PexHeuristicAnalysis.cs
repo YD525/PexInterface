@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.Remoting.Messaging;
 using System.Text;
 using static PexInterface.PexHeuristicAnalysis;
@@ -361,10 +362,11 @@ namespace PexInterface
             List<PexString> TempStrings = new List<PexString>();
             TempStrings.AddRange(this.AsmDecoder.Reader.StringTable);
 
-            foreach (var GetString in TempStrings)
+            foreach (var Function in this.CurrentCls.Functions)
             {
-                if (GetString.IsStr())
+                foreach (var GetString in Function.Strings)
                 {
+                    if(GetString.Value.Trim().Length>0)
                     this.Strings.Add(new PexStringItem(GetString));
                 }
             }
@@ -403,15 +405,16 @@ namespace PexInterface
         public class PexStringItem
         {
             public string UniqueKey = "";
-            public object Link = new object();
+            public AsmLink Link = null;
             public int StringTableID = 0;
             public int Score = 0;
             public string Original = "";
             public string Translated = "";
 
             public PexStringItem(PexString Item)
-            { 
-            
+            {
+                this.StringTableID = Item.Index;
+                this.Original = Item.Value;
             }
         }
 

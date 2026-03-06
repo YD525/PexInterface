@@ -370,15 +370,6 @@ namespace PexInterface
                 Value = "";
                 //ValueWide = "";
             }
-
-            public bool IsStr()
-            {
-                if (Value.Trim().StartsWith("\""))
-                {
-                    return true;
-                }
-                return false;
-            }
         }
 
         public class PexUserFlag

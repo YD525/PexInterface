@@ -307,7 +307,7 @@ public class PapyrusAsmDecoder
                 Arguments = instr.Arguments
             };
 
-            var orders = BuildOrders(instr, tempStrings);
+            var orders = BuildOrders(block,instr, tempStrings);
             tracker.CheckCode(lineIdx++, opCode, orders);
         }
 
@@ -325,6 +325,7 @@ public class PapyrusAsmDecoder
     // ── Helper: convert one instruction's arguments to AsmOrder list ─────────────
 
     private List<AsmOrder> BuildOrders(
+         FunctionBlock BlockRef,
         PexInstruction Instruct,
         List<PexString> tempStrings)
     {
@@ -375,7 +376,10 @@ public class PapyrusAsmDecoder
 
             // String literals get quotes
             if (Arg.Type == 2)
+            {
                 Order.Value = "\"" + Order.Value + "\"";
+                BlockRef.Strings.Add(StrEntry);
+            }   
 
             Orders.Add(Order);
         }
@@ -466,6 +470,8 @@ public class FunctionBlock
 
     public bool IsGlobal = false;
     public bool IsNative = false;
+
+    public List<PexString> Strings = new List<PexString>();
 
     public DecompileTracker TracksRef = null;
 }

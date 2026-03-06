@@ -14,7 +14,12 @@ namespace PEXInterfaceUnitTest
             new PapyrusAsmDecoder(Reader).Decompile(out PexHeuristicAnalysis Analysis);
 
             Analysis.Core.GetPsc(out string Psc,false).ReadStrings().GetStrings(out List<PexStringItem> Strings);
-            Console.WriteLine(Psc);
+
+            foreach (var GetStr in Strings)
+            {
+                Console.WriteLine(GetStr.Original);
+            }
+            //Console.WriteLine(Psc);
         }
         static void Main(string[] args)
         {
