@@ -224,6 +224,10 @@ namespace PexInterface
                 throw new Exception("Failed to create PexData instance.");
         }
 
+        public IntPtr GetHandle()
+        { 
+            return _Handle;
+        }
         public void Dispose()
         {
             if (!_Disposed)

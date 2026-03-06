@@ -41,6 +41,12 @@ namespace PexInterface
             }
           
         }
+
+        public PexAnalysisPipeline GetReaderPointer(out IntPtr Pointer)
+        {
+            Pointer = Reader.GetHandle();
+            return this;
+        }
         public PexAnalysisPipeline GetStrings(out List<PexStringItem> StringsRef, string Type = "")
         {
             StringsRef = this.HeuristicCore.GetStrings(Type);
