@@ -183,9 +183,22 @@ namespace PexInterface
             FuncNameCheck.Add(new FunctionCheck("RandomExpressionByTag", 0, false, ApiType.FrameworkApi, -1, "SexLab Api", ""));
             FuncNameCheck.Add(new FunctionCheck("SendDeviceEvent", 0, false, ApiType.FrameworkApi, -1, "DD Api", ""));
         }
+
+        public class StringBuilderExtend
+        {
+            public StringBuilder Content = new StringBuilder();
+            public int LineCount = 0;
+
+            public void AppendLine(string Msg = "")
+            {
+                Content.AppendLine(Msg);
+
+                LineCount += Msg.Count(c => c == '\n') + 1;
+            }
+        }
         public string GetPsc(bool ShowNote, CodeGenStyle Style = CodeGenStyle.CSharp)
         {
-            StringBuilder Content = new StringBuilder();
+            StringBuilderExtend Content = new StringBuilderExtend();
 
             if (Style == CodeGenStyle.Papyrus)
             {
@@ -282,8 +295,10 @@ namespace PexInterface
             {
                 Content.AppendLine("\n");
 
-                foreach (var GetFunc in this.CurrentCls.Functions)
+                //var GetFunc in this.CurrentCls.Functions
+                for (int i= 0;i<this.CurrentCls.Functions.Count;i++)
                 {
+                    var GetFunc = this.CurrentCls.Functions[i];
                     string GenParams = "";
 
                     if (GetFunc.Params.Count > 0)
@@ -343,13 +358,15 @@ namespace PexInterface
                             GenLine = string.Format(GenSpace(1) + "private static {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
                         }
                     }
-
+                    
                     Content.AppendLine(GenLine);
 
-                    int SpaceCount = 2;
+                    GetFunc.PscStartLineIndex = Content.LineCount;
 
-                    foreach (var GetLine in GetFunc.TrackerRef.Lines)
+                    //var GetLine in GetFunc.TrackerRef.Lines
+                    for (int ir =0;ir<GetFunc.TrackerRef.Lines.Count;ir++)
                     {
+                        var GetLine = GetFunc.TrackerRef.Lines[ir];
                         string SetCode = GetLine.PSCCode;
                         if (string.IsNullOrEmpty(SetCode)) continue;
 
@@ -374,6 +391,8 @@ namespace PexInterface
 
                             Content.AppendLine(outputLine);
                         }
+
+                        GetLine.PscFuncLineIndex = Content.LineCount;
                     }
 
                     if (Style == CodeGenStyle.Papyrus)
@@ -401,7 +420,7 @@ namespace PexInterface
                 }
             }
 
-            return Content.ToString();
+            return Content.Content.ToString();
         }
         public void ReadStrings()
         {
@@ -567,8 +586,12 @@ namespace PexInterface
             public string Value { get; set; }
             public AsmLink Link { get; set; }
 
-            public PexStringExtend(PexString Str, AsmLink Link)
+            public AsmCode Asm { get; set; }
+
+            public PexStringExtend(AsmCode Asm,PexString Str, AsmLink Link)
             {
+                this.Asm = Asm;
+
                 this.Index = Str.Index;
                 this.Value = Str.Value;
                 this.Link = Link;

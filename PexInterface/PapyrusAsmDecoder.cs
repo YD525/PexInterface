@@ -491,6 +491,8 @@ public class FunctionBlock
     public bool IsGlobal = false;
     public bool IsNative = false;
 
+    public int PscStartLineIndex = 0;
+
     public List<PexStringExtend> Strings = new List<PexStringExtend>();
 }
 
@@ -852,7 +854,7 @@ public class AsmLink
         return Line;
     }
 
-    public static void ParseLink(FunctionBlock BlockRef, List<ushort> StrPos,ref AsmLink Links, List<AsmOrder> Orders)
+    public static void ParseLink(AsmCode Asm,FunctionBlock BlockRef, List<ushort> StrPos,ref AsmLink Links, List<AsmOrder> Orders)
     {
         TokenSeparator PendingSeparator = TokenSeparator.Null;
 
@@ -869,7 +871,7 @@ public class AsmLink
                     PexString NPexString = new PexString();
                     NPexString.Value = Order.DefValue;
                     NPexString.Index = Order.Index;
-                    BlockRef.Strings.Add(new PexStringExtend(NPexString,CurrentLink));
+                    BlockRef.Strings.Add(new PexStringExtend(Asm,NPexString, CurrentLink));
                     CurrentLink.StringID = Order.Index;
                     StrPos.Remove(Order.Index);
                 }
@@ -885,7 +887,7 @@ public class AsmLink
                     PexString NPexString = new PexString();
                     NPexString.Value = Order.DefValue;
                     NPexString.Index = Order.Index;
-                    BlockRef.Strings.Add(new PexStringExtend(NPexString, CurrentLink));
+                    BlockRef.Strings.Add(new PexStringExtend(Asm,NPexString, CurrentLink));
                     CurrentLink.StringID = Order.Index;
                     StrPos.Remove(Order.Index);
                 }
@@ -1052,15 +1054,16 @@ public class AsmBase
     public int SpaceCount = 0;
     public AsmLink Links = new AsmLink();
 
-    protected void ParseLink(FunctionBlock BlockRef, List<ushort> StrPos, List<AsmOrder> Orders)
+    protected void ParseLink(AsmCode Asm,FunctionBlock BlockRef, List<ushort> StrPos, List<AsmOrder> Orders)
     {
-        AsmLink.ParseLink(BlockRef,StrPos,ref Links, Orders);
+        AsmLink.ParseLink(Asm,BlockRef, StrPos,ref Links, Orders);
     }
 
 }
 
 public class AsmCode:AsmBase
 {
+    public int PscFuncLineIndex = 0;
     public int GetJumpTarget()
     {
         if (OPCode == null || OPCode.Arguments == null) return -1;
@@ -1101,7 +1104,7 @@ public class AsmCode:AsmBase
     public void Parse(FunctionBlock BlockRef, List<ushort> StrPos,AsmOPCode OPCode, List<AsmOrder> Orders)
     {
         this.OPCode = OPCode;
-        this.ParseLink(BlockRef,StrPos,Orders);
+        this.ParseLink(this,BlockRef,StrPos,Orders);
     }
 
     public string GetAsmCode()
