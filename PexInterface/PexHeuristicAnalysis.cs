@@ -403,7 +403,7 @@ namespace PexInterface
         public class PexStringExtend
         {
             public ushort Index { get; set; }
-            private string Value { get; set; }
+            public string Value { get; set; }
             public AsmLink Link  { get; set; }
 
             public PexStringExtend(PexString Str, AsmLink Link)
@@ -411,10 +411,6 @@ namespace PexInterface
                  this.Index = Str.Index;
                  this.Value = Str.Value; 
                  this.Link = Link;
-            }
-            public string GetValue()
-            {
-                return Value.Substring(1, Value.Length - 2);
             }
         }
 
@@ -436,7 +432,7 @@ namespace PexInterface
             {
                 this.FunctionRef = FunctionRef;
                 this.StringTableID = Item.Index;
-                this.Original = string.Copy(Item.GetValue());
+                this.Original = string.Copy(Item.Value);
 
                 this.UniqueKey = GenUniqueKey(FunctionRef);
                 GC.Collect();
