@@ -561,6 +561,16 @@ public class AsmLink
             return true;
         return false;
     }
+    public string GetSign()
+    {
+        if (Value == null) return string.Empty;
+        string SetValue = this.Value.Trim();
+        if (SetValue.StartsWith("\""))
+        {
+            return string.Empty;
+        }
+        return SetValue;
+    }
     public string GetValue(AsmValueType Type = AsmValueType.Null)
     {
         if (Value == null) return string.Empty;

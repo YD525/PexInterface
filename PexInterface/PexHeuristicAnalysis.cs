@@ -79,7 +79,7 @@ namespace PexInterface
     }
     public class PexHeuristicAnalysis
     {
-        public static string Version = "1.0.2 Beta";
+        public static string Version = "1.0.3 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
 
@@ -613,15 +613,15 @@ namespace PexInterface
                 var GetTail = StringItem.Link.GetTail();
 
                 string AutoMerge = string.Join("_", new[] {
-                    GetHead?.GetValue(),
-                    GetPrev?.GetValue(),
-                    GetNext?.GetValue(),
-                    GetTail?.GetValue()
-                }.Where(s => !string.IsNullOrEmpty(s)));
+                    GetHead?.GetSign(),
+                    GetPrev?.GetSign(),
+                    GetNext?.GetSign(),
+                    GetTail?.GetSign()
+                }.Where(S=> !string.IsNullOrEmpty(S)));
 
                 //AutoMerge += "_" + StringItem.Index;
 
-                string SetKey = Crc32Helper.ComputeCrc32(Score + "_" + Sign + "_" + Func.FunctionName + "_" + AutoMerge);
+                string SetKey =Crc32Helper.ComputeCrc32(Score + "_" + Sign + "_" + Func.FunctionName + "_" + AutoMerge);
                 return SetKey;
             }
 
