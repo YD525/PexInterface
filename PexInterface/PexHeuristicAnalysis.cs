@@ -422,6 +422,7 @@ namespace PexInterface
         }
         public void ReadStrings()
         {
+            this.Types.Clear();
             this.Strings.Clear();
 
             HashSet<ushort> IDs = new HashSet<ushort>();
@@ -452,6 +453,9 @@ namespace PexInterface
                         }
                     }
                 }
+
+                if(!this.Types.Contains(Function.FunctionName))
+                this.Types.Add(Function.FunctionName);
             }
         }
 
