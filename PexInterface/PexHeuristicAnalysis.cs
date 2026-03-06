@@ -24,9 +24,9 @@ namespace PexInterface
             return this;
         }
 
-        public PexAnalysisPipeline GetStrings(out List<PexStringItem> StringsRef)
+        public PexAnalysisPipeline GetStrings(out List<PexStringItem> StringsRef,string Type = "")
         {
-            StringsRef = this.HeuristicCore.Strings;
+            StringsRef = this.HeuristicCore.GetStrings(Type);
             return this;
         }
         public PexAnalysisPipeline AnalysisStrings()
@@ -43,7 +43,7 @@ namespace PexInterface
     public class PexHeuristicAnalysis
     {
 
-        public static string Version = "1.0.1 Beta";
+        public static string Version = "1.0.2 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
 
@@ -74,7 +74,9 @@ namespace PexInterface
 
         public FuncRule FuncNameCheck = null;
 
-        public List<PexStringItem> Strings = new List<PexStringItem>();
+        public Dictionary<string, List<PexStringItem>> Strings  = new Dictionary<string, List<PexStringItem>>();
+        public List<string> Types = new List<string>();
+
         public PscCls CurrentCls = new PscCls();
 
         public static string GenSpace(int Count)
@@ -363,11 +365,34 @@ namespace PexInterface
 
             foreach (var Function in this.CurrentCls.Functions)
             {
+                if (!this.Strings.ContainsKey(Function.FunctionName))
+                {
+                    this.Strings.Add(Function.FunctionName,new List<PexStringItem>());
+                }
                 foreach (var GetString in Function.Strings)
                 {
-                    if(GetString.Value.Length>0)
-                    this.Strings.Add(new PexStringItem(Function,GetString));
+                    if (GetString.Value.Length > 0)
+                    {
+                        this.Strings[Function.FunctionName].Add(new PexStringItem(Function, GetString));
+                    }
                 }
+            }
+        }
+
+        public List<PexStringItem> GetStrings(string Type ="")
+        {
+            if (Type == "")
+            {
+                List<PexStringItem> TempArray = new List<PexStringItem>();
+                foreach (var Function in this.CurrentCls.Functions)
+                {
+                    TempArray.AddRange(Strings[Function.FunctionName]);
+                }
+                return TempArray;
+            }
+            else
+            {
+                return Strings[Type];
             }
         }
 
@@ -378,12 +403,13 @@ namespace PexInterface
 
         public void SaveAll(string Output)
         {
+            var LocalStrings = GetStrings();
             int ModifyCount = 0;
-            for (int i = 0; i < Strings.Count; i++)
+            for (int i = 0; i < LocalStrings.Count; i++)
             {
-                if (Strings[i].Translated.Length > 0)
+                if (LocalStrings[i].Translated.Length > 0)
                 {
-                    PexInterop.ModifyStringTable((ushort)Strings[i].StringTableID, Strings[i].Translated);
+                    PexInterop.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
                     ModifyCount++;
                 }
             }
@@ -396,7 +422,10 @@ namespace PexInterface
         public void Close()
         {
             this.CurrentCls = null;
+            this.Types.Clear();
             this.Strings.Clear();
+            this.AsmDecoder?.Reader.Close();
+            PexInterop.Close();
             GC.SuppressFinalize(this);
         }
 
@@ -437,8 +466,8 @@ namespace PexInterface
 
                 //AutoMerge += "_" + StringItem.Index;
 
-                string SetName = Crc32Helper.ComputeCrc32(Func.FunctionName +"_"+ AutoMerge);
-                return SetName;
+                string SetKey = Crc32Helper.ComputeCrc32(Func.FunctionName +"_"+ AutoMerge);
+                return SetKey;
             }
 
             public PexStringItem(FunctionBlock FunctionRef, PexStringExtend Item)
