@@ -21,6 +21,8 @@ public enum CodeGenStyle
 #endregion
 public class PapyrusAsmDecoder
 {
+    public static string CapitalizeFirst(string s)
+=> (s == null || s.Length == 0) ? s : char.ToUpper(s[0]) + s.Substring(1);
     public static string ObjToStr(object Item)
     {
         string GetConvertStr = string.Empty;
@@ -551,6 +553,18 @@ public class AsmLink
     public AsmLink Prev = null;   
     private AsmLink Tail = null;
 
+    public bool IsNull()
+    {
+        if (this.Value == null)
+            return true;
+        if (this.Value == string.Empty)
+            return true;
+        // Case-insensitive match for all nonevar variants
+        string lower = this.Value.Trim().ToLower();
+        if (lower == "nonevar" || lower == "::nonevar" || lower == "none")
+            return true;
+        return false;
+    }
     public string GetValue(AsmValueType Type = AsmValueType.Null)
     {
         if (Value == null) return string.Empty;
@@ -559,6 +573,8 @@ public class AsmLink
 
         if (Type == AsmValueType.Null)
         {
+            SetValue = SetValue.ToLower();
+
             if (SetValue.EndsWith("_var"))
             {
                 SetValue = SetValue.Substring(0, SetValue.Length - "_var".Length);
@@ -669,24 +685,6 @@ public class AsmLink
             return true;
         }
 
-        return false;
-    }
-    public bool IsNull()
-    {
-        if (this.Value == null)
-        {
-            return true;
-        }
-        else
-        if (this.Value == string.Empty)
-        {
-            return true;
-        }
-        else
-        if (this.Value == "::nonevar" || this.Value == "nonevar")
-        {
-            return true;
-        }
         return false;
     }
     public bool HaveValue()
@@ -1063,7 +1061,6 @@ public class AsmCode:AsmBase
         if (int.TryParse(Arg.Value.ToString(), out Parsed))
             JumpID = Parsed;
 
-        Debug.WriteLine(JumpID);
         return JumpID;
     }
     public AsmCode(int LineIndex)
@@ -1093,6 +1090,8 @@ public class AsmCode:AsmBase
     {
         return "//" + GetAsmCode();
     }
+
+
   
 }
 public class DecompileTracker

@@ -248,8 +248,8 @@ namespace PexInterface
                             string outputLine = PexHeuristicAnalysis.GenSpace(2) + sub;
 
                             // Optional assembly comment on the last line
-                            //if (si == subLines.Length - 1)
-                            //    outputLine += GetLine.GetNote();
+                            if (si == subLines.Length - 1)
+                                outputLine += GetLine.GetNote();
 
                             Content.AppendLine(outputLine);
                         }

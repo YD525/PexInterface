@@ -19,10 +19,11 @@ namespace PexInterface
                 this.LinkLineIndex = LineIndex;
             }
         }
+       
 
         public static void DeFunctionCode(CodeGenStyle Style, List<PexString> TempStrings, PscCls ParentCls, FunctionBlock Func, DecompileTracker TrackerRef, bool CanSkipPscDeCode)
         {
-            if (Func.FunctionName == "RDO_ModCheck")
+            if (Func.FunctionName == "IsModFound")
             {
                 string ASMCode = "";
                 for (int i = 0; i < TrackerRef.Lines.Count; i++)
@@ -155,9 +156,9 @@ namespace PexInterface
                         }
 
                     case "return":
-                        AsmLine.PSCCode = Head.IsNull()
-                            ? "Return"
-                            : string.Format("return {0};", Head.GetValue());
+                        
+                        AsmLine.PSCCode = string.Format("return {0};", Head.GetValue());
+
                         break;
 
                     case "not":
@@ -171,7 +172,7 @@ namespace PexInterface
                     // callstatic layout: <ClassName> <FunctionName> <ReturnVar> <NumParams> [params...]
                     case "callstatic":
                         {
-                            string ClassName = Head.GetValue();
+                            string ClassName = PapyrusAsmDecoder.CapitalizeFirst(Head.GetValue());
                             var FuncNode = Head.Next;
                             string FuncName = FuncNode?.GetValue() ?? "?";
                             var RetNode = FuncNode?.Next;
@@ -194,6 +195,14 @@ namespace PexInterface
                             break;
                         }
 
+                    case "strcat":
+                        {
+                            string Dest = Head.GetValue();
+                            string Left = Head.Next?.GetValue() ?? "?";
+                            string Right = Head.Next?.Next?.GetValue() ?? "?";
+                            AsmLine.PSCCode = string.Format("{0} = {1} + {2};", Dest, Left, Right);
+                            break;
+                        }
                     // cast layout: <dest> <src>  →  dest = src  (Papyrus cast is an assignment)
                     case "cast":
                         {
@@ -202,7 +211,19 @@ namespace PexInterface
                             AsmLine.PSCCode = string.Format("{0} = {1};", Dest, Src);
                             break;
                         }
+                    case "propget":
+                        {
+                            string PropName = Head.GetValue();
+                            string Obj = Head.Next?.GetValue() ?? "Self";
+                            string Dest = Head.Next?.Next?.GetValue() ?? "?";
 
+                            // Normalize caller: strip _var suffix, treat self as Self
+                            if (Obj.ToLower() == "self")
+                                Obj = "Self";
+
+                            AsmLine.PSCCode = string.Format("{0} = {1}.{2};", Dest, Obj, PropName);
+                            break;
+                        }
                     // array_create layout: <dest> <size>
                     case "array_create":
                         {
@@ -572,108 +593,176 @@ namespace PexInterface
 
                 string op = lines[i].OPCode?.Value ?? "";
 
-                if (!IsCmp(op) || i + 1 >= n || lines[i + 1].OPCode?.Value != "jmpf")
+                // ── Path A: cmp_* followed immediately by jmpf ──
+                if (IsCmp(op) && i + 1 < n && lines[i + 1].OPCode?.Value == "jmpf")
                 {
-                    i++;
-                    continue;
-                }
+                    int cmpLine = i;
+                    int jmpfLine = i + 1;
+                    int falseTarget = AbsTarget(lines, jmpfLine);
 
-                int cmpLine = i;
-                int jmpfLine = i + 1;
-                int falseTarget = AbsTarget(lines, jmpfLine);
+                    // Detect while: a back-jump inside the body that targets <= cmpLine
+                    bool isWhile = false;
+                    int whileJmpLine = -1;
 
-                // Detect while: a back-jump inside the body that targets <= cmpLine
-                bool isWhile = false;
-                int whileJmpLine = -1;
-
-                for (int k = jmpfLine + 1; k < falseTarget && k < n; k++)
-                {
-                    if (lines[k].OPCode?.Value == "jmp" && AbsTarget(lines, k) <= cmpLine)
+                    for (int k = jmpfLine + 1; k < falseTarget && k < n; k++)
                     {
-                        isWhile = true;
-                        whileJmpLine = k;
-                        break;
+                        if (lines[k].OPCode?.Value == "jmp" && AbsTarget(lines, k) <= cmpLine)
+                        {
+                            isWhile = true;
+                            whileJmpLine = k;
+                            break;
+                        }
                     }
-                }
 
-                if (isWhile)
-                {
-                    cfa.AddEvent(cmpLine, new CfEvent(CfEventKind.WhileBegin, buildCondition(cmpLine)));
-                    cfa.AddEvent(whileJmpLine, new CfEvent(CfEventKind.EndWhile));
+                    if (isWhile)
+                    {
+                        cfa.AddEvent(cmpLine, new CfEvent(CfEventKind.WhileBegin, buildCondition(cmpLine)));
+                        cfa.AddEvent(whileJmpLine, new CfEvent(CfEventKind.EndWhile));
 
-                    handled[cmpLine] = true;
-                    handled[jmpfLine] = true;
-                    handled[whileJmpLine] = true;
+                        handled[cmpLine] = true;
+                        handled[jmpfLine] = true;
+                        handled[whileJmpLine] = true;
+                        i = cmpLine + 1;
+                        continue;
+                    }
+
+                    var chain = CollectChain(lines, cmpLine, n);
+
+                    if (chain.Count <= 1)
+                    {
+                        cfa.AddEvent(cmpLine, new CfEvent(CfEventKind.IfBegin, buildCondition(cmpLine)));
+                        handled[cmpLine] = true;
+                        handled[jmpfLine] = true;
+
+                        int prevFalse = falseTarget - 1;
+                        if (prevFalse >= 0 && prevFalse < n && lines[prevFalse].OPCode?.Value == "jmp")
+                        {
+                            int elseEnd = Math.Min(AbsTarget(lines, prevFalse) - 1, n - 1);
+                            cfa.AddEvent(falseTarget, new CfEvent(CfEventKind.ElseBegin));
+                            cfa.AddEvent(elseEnd, new CfEvent(CfEventKind.EndIf));
+                            handled[prevFalse] = true;
+                        }
+                        else
+                        {
+                            int endIfLine = Math.Max(0, Math.Min(falseTarget - 1, n - 1));
+                            cfa.AddEvent(endIfLine, new CfEvent(CfEventKind.EndIf));
+                        }
+                    }
+                    else
+                    {
+                        var first = chain[0];
+                        cfa.AddEvent(first.CmpLine, new CfEvent(CfEventKind.IfBegin, buildCondition(first.CmpLine)));
+                        handled[first.CmpLine] = true;
+                        handled[first.JmpfLine] = true;
+
+                        for (int ci = 1; ci < chain.Count; ci++)
+                        {
+                            var seg = chain[ci];
+                            cfa.AddEvent(seg.CmpLine, new CfEvent(CfEventKind.ElseIfBegin, buildCondition(seg.CmpLine)));
+                            handled[seg.CmpLine] = true;
+                            handled[seg.JmpfLine] = true;
+                        }
+
+                        int commonEnd = -1;
+                        int pf0 = chain[0].FalseTarget - 1;
+                        if (pf0 >= 0 && pf0 < n && lines[pf0].OPCode?.Value == "jmp")
+                        {
+                            commonEnd = AbsTarget(lines, pf0) - 1;
+                            handled[pf0] = true;
+                        }
+                        for (int ci = 1; ci < chain.Count; ci++)
+                        {
+                            int pfN = chain[ci].FalseTarget - 1;
+                            if (pfN >= 0 && pfN < n && lines[pfN].OPCode?.Value == "jmp")
+                            {
+                                handled[pfN] = true;
+                                if (commonEnd < 0) commonEnd = AbsTarget(lines, pfN) - 1;
+                            }
+                        }
+                        if (commonEnd < 0)
+                            commonEnd = chain[chain.Count - 1].FalseTarget - 1;
+
+                        commonEnd = Math.Max(0, Math.Min(commonEnd, n - 1));
+                        cfa.AddEvent(commonEnd, new CfEvent(CfEventKind.EndIf));
+                    }
+
                     i = cmpLine + 1;
                     continue;
                 }
 
-                // If / ElseIf chain
-                var chain = CollectChain(lines, cmpLine, n);
-
-                if (chain.Count <= 1)
+                // ── Path B: bare jmpf / jmpt with no preceding cmp_* ──
+                // Papyrus emits this pattern when the branch operand is already a Bool variable,
+                // allowing the compiler to skip the cmp_* instruction entirely.
+                // Only reached when Path A did not match, so no extra guard is needed.
+                if (op == "jmpf" || op == "jmpt")
                 {
-                    // Simple if, possibly with else
-                    cfa.AddEvent(cmpLine, new CfEvent(CfEventKind.IfBegin, buildCondition(cmpLine)));
-                    handled[cmpLine] = true;
-                    handled[jmpfLine] = true;
+                    // Resolve the condition directly from the jump operand (a Bool variable name).
+                    // jmpf jumps when false → body runs when true  → condition is the variable itself.
+                    // jmpt jumps when true  → body runs when false → condition is the variable negated.
+                    string condVar = lines[i].Links?.GetHead()?.GetValue() ?? "?";
+                    string condition = (op == "jmpt") ? ("!" + condVar) : condVar;
+                    int falseTarget = AbsTarget(lines, i);
+                    int jmpLine = i;
 
-                    int prevFalse = falseTarget - 1;
-                    if (prevFalse >= 0 && prevFalse < n && lines[prevFalse].OPCode?.Value == "jmp")
+                    // Detect while: a back-jump inside the body that targets <= jmpLine
+                    bool isWhile = false;
+                    int whileJmpLine = -1;
+
+                    for (int k = jmpLine + 1; k < falseTarget && k < n; k++)
                     {
-                        int elseEnd = Math.Min(AbsTarget(lines, prevFalse) - 1, n - 1);
+                        if (lines[k].OPCode?.Value == "jmp" && AbsTarget(lines, k) <= jmpLine)
+                        {
+                            isWhile = true;
+                            whileJmpLine = k;
+                            break;
+                        }
+                    }
+
+                    if (isWhile)
+                    {
+                        cfa.AddEvent(jmpLine, new CfEvent(CfEventKind.WhileBegin, condition));
+                        cfa.AddEvent(whileJmpLine, new CfEvent(CfEventKind.EndWhile));
+                        handled[jmpLine] = true;
+                        handled[whileJmpLine] = true;
+                        i++;
+                        continue;
+                    }
+
+                    // If / Else: scan backwards from falseTarget to find the exit jmp of the if-body.
+                    // It skips the else block and may not sit exactly at falseTarget-1.
+                    cfa.AddEvent(jmpLine, new CfEvent(CfEventKind.IfBegin, condition));
+                    handled[jmpLine] = true;
+
+                    int exitJmpLine = -1;
+                    for (int k = falseTarget - 1; k > jmpLine; k--)
+                    {
+                        if (lines[k].OPCode?.Value == "jmp" && AbsTarget(lines, k) > jmpLine)
+                        {
+                            exitJmpLine = k;
+                            break;
+                        }
+                    }
+
+                    if (exitJmpLine >= 0 && falseTarget < n)
+                    {
+                        // Exit jmp found and else block is within bounds: emit Else / EndIf.
+                        int elseEnd = Math.Min(AbsTarget(lines, exitJmpLine) - 1, n - 1);
                         cfa.AddEvent(falseTarget, new CfEvent(CfEventKind.ElseBegin));
                         cfa.AddEvent(elseEnd, new CfEvent(CfEventKind.EndIf));
-                        handled[prevFalse] = true;
+                        handled[exitJmpLine] = true;
                     }
                     else
                     {
+                        // No else block (or falseTarget out of bounds): plain if.
                         int endIfLine = Math.Max(0, Math.Min(falseTarget - 1, n - 1));
                         cfa.AddEvent(endIfLine, new CfEvent(CfEventKind.EndIf));
                     }
-                }
-                else
-                {
-                    // First segment → If
-                    var first = chain[0];
-                    cfa.AddEvent(first.CmpLine, new CfEvent(CfEventKind.IfBegin, buildCondition(first.CmpLine)));
-                    handled[first.CmpLine] = true;
-                    handled[first.JmpfLine] = true;
 
-                    // Remaining segments → ElseIf
-                    for (int ci = 1; ci < chain.Count; ci++)
-                    {
-                        var seg = chain[ci];
-                        cfa.AddEvent(seg.CmpLine, new CfEvent(CfEventKind.ElseIfBegin, buildCondition(seg.CmpLine)));
-                        handled[seg.CmpLine] = true;
-                        handled[seg.JmpfLine] = true;
-                    }
-
-                    // All branches share a common exit
-                    int commonEnd = -1;
-                    int pf0 = chain[0].FalseTarget - 1;
-                    if (pf0 >= 0 && pf0 < n && lines[pf0].OPCode?.Value == "jmp")
-                    {
-                        commonEnd = AbsTarget(lines, pf0) - 1;
-                        handled[pf0] = true;
-                    }
-                    for (int ci = 1; ci < chain.Count; ci++)
-                    {
-                        int pfN = chain[ci].FalseTarget - 1;
-                        if (pfN >= 0 && pfN < n && lines[pfN].OPCode?.Value == "jmp")
-                        {
-                            handled[pfN] = true;
-                            if (commonEnd < 0) commonEnd = AbsTarget(lines, pfN) - 1;
-                        }
-                    }
-                    if (commonEnd < 0)
-                        commonEnd = chain[chain.Count - 1].FalseTarget - 1;
-
-                    commonEnd = Math.Max(0, Math.Min(commonEnd, n - 1));
-                    cfa.AddEvent(commonEnd, new CfEvent(CfEventKind.EndIf));
+                    i++;
+                    continue;
                 }
 
-                i = cmpLine + 1;
+                i++;
             }
 
             return cfa;
@@ -759,7 +848,7 @@ namespace PexInterface
 
                     L.PSCCode = ""; // consumed
 
-                    string ClassName = lh.GetValue();
+                    string ClassName = PapyrusAsmDecoder.CapitalizeFirst(lh.GetValue());
                     string FuncName = FuncNode?.GetValue() ?? "?";
 
                     var ParamList = new List<string>();
@@ -773,7 +862,16 @@ namespace PexInterface
                     }
                     return string.Format("{0}.{1}({2})", ClassName, FuncName, string.Join(", ", ParamList));
                 }
+                if (lop == "strcat")
+                {
+                    var lh = L.Links.GetHead();
+                    if (lh.GetValue() != name) continue;
+                    L.PSCCode = ""; // consumed: inline into caller
 
+                    string left = ResolveTemp(tracker, j, lh.Next?.GetValue() ?? "?", tempStrings);
+                    string right = ResolveTemp(tracker, j, lh.Next?.Next?.GetValue() ?? "?", tempStrings);
+                    return string.Format("{0} + {1}", left, right);
+                }
                 // cast: dest = src — inline src as the expression for dest
                 if (lop == "cast")
                 {
@@ -781,6 +879,22 @@ namespace PexInterface
                     if (lh.GetValue() != name) continue;
                     L.PSCCode = ""; // consumed
                     return ResolveTemp(tracker, j, lh.Next?.GetValue() ?? "?", tempStrings);
+                }
+
+                if (lop == "propget")
+                {
+                    var lh = L.Links.GetHead();
+                    var ObjNode = lh.Next;
+                    var DestNode = ObjNode?.Next;
+                    if (DestNode == null || DestNode.GetValue() != name) continue;
+                    L.PSCCode = ""; // consumed
+
+                    string PropName = lh.GetValue();
+                    string Obj = ObjNode?.GetValue() ?? "Self";
+                    if (Obj.ToLower() == "self")
+                        Obj = "Self";
+
+                    return string.Format("{0}.{1}", Obj, PropName);
                 }
 
                 if (lop == "array_getelement")
@@ -902,6 +1016,7 @@ namespace PexInterface
                 asmLine.SpaceCount = 0;
             }
         }
+
 
         private static string Indent(int depth) => new string(' ', depth * 4);
     }
