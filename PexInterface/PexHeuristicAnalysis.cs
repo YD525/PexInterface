@@ -367,7 +367,7 @@ namespace PexInterface
                 foreach (var GetString in Function.Strings)
                 {
                     if(GetString.Value.Trim().Length>0)
-                    this.Strings.Add(new PexStringItem(GetString));
+                    this.Strings.Add(new PexStringItem(Function,GetString));
                 }
             }
         }
@@ -405,16 +405,25 @@ namespace PexInterface
         public class PexStringItem
         {
             public string UniqueKey = "";
-            public AsmLink Link = null;
+            public FunctionBlock FunctionRef = null;
             public int StringTableID = 0;
             public int Score = 0;
             public string Original = "";
             public string Translated = "";
 
-            public PexStringItem(PexString Item)
+            public static string GenUniqueKey(FunctionBlock Func)
             {
+                return string.Empty;
+            }
+
+            public PexStringItem(FunctionBlock FunctionRef, PexString Item)
+            {
+                this.FunctionRef = FunctionRef;
                 this.StringTableID = Item.Index;
                 this.Original = Item.Value;
+
+                this.UniqueKey = GenUniqueKey(FunctionRef);
+                GC.Collect();
             }
         }
 

@@ -249,8 +249,9 @@ public class PapyrusAsmDecoder
                 foreach (var pexFunc in state.Functions)
                 {
                     var block = BuildFunctionBlock(
-                        pexFunc, stateName, tempStrings, parentCls, canSkipPscDeCode);
+                        pexFunc, stateName, tempStrings, parentCls, canSkipPscDeCode,out DecompileTracker Tracker);
 
+                    block.TrackerRef = Tracker;
                     functionBlocks.Add(block);
                 }
             }
@@ -266,7 +267,8 @@ public class PapyrusAsmDecoder
         string stateName,
         List<PexString> tempStrings,
         PscCls parentCls,
-        bool canSkipPscDeCode)
+        bool canSkipPscDeCode,
+        out DecompileTracker Tracker)
     {
         var block = new FunctionBlock();
 
@@ -296,7 +298,7 @@ public class PapyrusAsmDecoder
         block.Params = paramList;
 
         // Build instruction tracker
-        var tracker = new DecompileTracker();
+        Tracker = new DecompileTracker();
         int lineIdx = 0;
 
         foreach (var instr in pexFunc.Instructions)
@@ -308,16 +310,16 @@ public class PapyrusAsmDecoder
             };
 
             var orders = BuildOrders(block,instr, tempStrings);
-            tracker.CheckCode(lineIdx++, opCode, orders);
+            Tracker.CheckCode(lineIdx++, opCode, orders);
         }
 
-        block.TracksRef = tracker;
+        block.TracksRef = Tracker;
         block.FunctionCode = "";
 
         // Decompile body
         AsmExtend.DeFunctionCode(
             CodeGenStyle.CSharp, tempStrings, parentCls,
-            block, tracker, canSkipPscDeCode);
+            block, Tracker, canSkipPscDeCode);
 
         return block;
     }
@@ -459,6 +461,7 @@ public class PscCls
 }
 public class FunctionBlock
 {
+    public DecompileTracker TrackerRef = new DecompileTracker();
     public string FunctionName = "";
     public List<LocalVariable> Params = new List<LocalVariable>();
     public string ReturnType = "";

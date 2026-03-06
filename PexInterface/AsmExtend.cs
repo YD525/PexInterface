@@ -92,13 +92,13 @@ namespace PexInterface
             ICodeStyle CodeStyle = null)
         {
             // Debug hook — keep for breakpoint inspection
-            if (Func.FunctionName == "IsFeatureEnabled")
-            {
-                string AsmCode = "";
-                for (int i = 0; i < TrackerRef.Lines.Count; i++)
-                    AsmCode += TrackerRef.Lines[i].GetAsmCode() + "\n";
-                GC.Collect();
-            }
+            //if (Func.FunctionName == "IsFeatureEnabled")
+            //{
+            //    string AsmCode = "";
+            //    for (int i = 0; i < TrackerRef.Lines.Count; i++)
+            //        AsmCode += TrackerRef.Lines[i].GetAsmCode() + "\n";
+            //    GC.Collect();
+            //}
 
             if (CanSkipPscDeCode) return;
 
