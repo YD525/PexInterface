@@ -14,12 +14,12 @@ namespace PEXInterfaceUnitTest
             Analysis.Core.LoadPex(PexPath).GetPsc(out string Psc, false, CodeGenStyle.CSharp)
             .ReadStrings().GetStrings(out List<PexStringItem> Strings).AnalysisStrings();
 
-            //foreach (var GetStr in Strings)
-            //{
-            //    Console.WriteLine(string.Format("Key:{0},Value:{1}",GetStr.UniqueKey,GetStr.Original));
-            //}
+            foreach (var GetStr in Strings)
+            {
+                Console.WriteLine(string.Format("Key:{0},Score:{1},Value:{2}", GetStr.UniqueKey, GetStr.Score,GetStr.Original));
+            }
 
-            Console.WriteLine(Psc);
+            //Console.WriteLine(Psc);
 
             return Analysis;
         }

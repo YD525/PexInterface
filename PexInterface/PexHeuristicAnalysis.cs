@@ -143,21 +143,25 @@ namespace PexInterface
             FuncNameCheck.Add(new FunctionCheck("SetGameSettingString", 1, true, ApiType.UnknownAPI, -1, ""));
             FuncNameCheck.Add(new FunctionCheck("ShowMessage", 0, true, ApiType.FrameworkApi, 1, ""));
 
+            FuncNameCheck.Add(new FunctionCheck("Trace", 0, true, ApiType.NativeApi, 1, ""));
+            FuncNameCheck.Add(new FunctionCheck("Trace", 0, true, ApiType.NativeApi, 2, ""));
+    
+
             //Danger
-            FuncNameCheck.Add(new FunctionCheck("DamageActorValue", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
-            FuncNameCheck.Add(new FunctionCheck("SendModEvent", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
-            FuncNameCheck.Add(new FunctionCheck("AnimSwitchKeyword", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
-            FuncNameCheck.Add(new FunctionCheck("StartThirdPersonAnimation", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
-            FuncNameCheck.Add(new FunctionCheck("SendAnimationEvent", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
-            FuncNameCheck.Add(new FunctionCheck("SetInstanceVolume", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
-            FuncNameCheck.Add(new FunctionCheck("Create", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("DamageActorValue", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("SendModEvent", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("AnimSwitchKeyword", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("StartThirdPersonAnimation", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("SendAnimationEvent", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("SetInstanceVolume", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("Create", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
 
-            FuncNameCheck.Add(new FunctionCheck("UnSetFormValue", 0, false, ApiType.NativeApi, -1, "StorageUtil Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("UnSetFormValue", 0, false, ApiType.NativeApi, -1, "StorageUtil Api", ""));
 
 
-            FuncNameCheck.Add(new FunctionCheck("AttrDrain", 0, false, ApiType.FrameworkApi, -1, "SkSE Api", "", true));
-            FuncNameCheck.Add(new FunctionCheck("RandomExpressionByTag", 0, false, ApiType.FrameworkApi, -1, "SexLab Api", "", true));
-            FuncNameCheck.Add(new FunctionCheck("SendDeviceEvent", 0, false, ApiType.FrameworkApi, -1, "DD Api", "", true));
+            FuncNameCheck.Add(new FunctionCheck("AttrDrain", 0, false, ApiType.FrameworkApi, -1, "SkSE Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("RandomExpressionByTag", 0, false, ApiType.FrameworkApi, -1, "SexLab Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("SendDeviceEvent", 0, false, ApiType.FrameworkApi, -1, "DD Api", ""));
         }
         public string GetPsc(bool ShowNote, CodeGenStyle Style = CodeGenStyle.CSharp)
         {
@@ -445,8 +449,12 @@ namespace PexInterface
                 {
                     var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
 
-                    FuncStrs[i].Score = -5;
-                    
+                    FuncStrs[i].Score = -1;
+
+                    if (SetFlow.ConsumedByMethodName.Length > 0)
+                    {
+                        FuncStrs[i].Score += FuncNameCheck.CheckFuncByName(SetFlow.CallInfo.MethodName,SetFlow.CallInfo.StringArgIndex,SetFlow.CallInfo.TotalArgCount);
+                    }
                 }
             }
         }
@@ -557,25 +565,26 @@ namespace PexInterface
 
         public class ParamCheck
         {
-            public int Index = 0;
+            public int ParamAtIndex = 0;
             public bool IsReward = false;
             public string Note = "";
+            public int ParamCount = -1;
 
-            public ParamCheck(int Index, bool IsReward, string Note)
+            public ParamCheck(int ParamAtIndex, bool IsReward, string Note,int ParamCount)
             {
-                this.Index = Index;
+                this.ParamAtIndex = ParamAtIndex;
                 this.IsReward = IsReward;
                 this.Note = Note;
+                this.ParamCount = ParamCount;
             }
         }
         public class FunctionCheck
         {
             public ApiType Type = ApiType.UnknownAPI;
-            public bool FullCheck = false;
             public string FunctionName = "";
-            public List<ParamCheck> IndexChecks = new List<ParamCheck>();
+            public Dictionary<int,ParamCheck> IndexChecks = new Dictionary<int,ParamCheck>();
+
             public string Note = "";
-            public int ParamCountLimit = -1;
 
             public int CheckScore()
             {
@@ -590,13 +599,11 @@ namespace PexInterface
                 }
                 return 0;
             }
-            public FunctionCheck(string FuncName, int ParamIndex, bool IsReward, ApiType Type, int ParamCountLimit, string FuncNote = "", string ParamNote = "", bool FullCheck = false)
+            public FunctionCheck(string FuncName, int ParamAtIndex, bool IsReward, ApiType Type, int ParamCount, string FuncNote = "", string ParamNote = "")
             {
                 this.FunctionName = FuncName;
                 this.Type = Type;
-                this.FullCheck = FullCheck;
-                this.IndexChecks = new List<ParamCheck>() { new ParamCheck(ParamIndex, IsReward, Note) };
-                this.ParamCountLimit = ParamCountLimit;
+                this.IndexChecks.Add(ParamCount, new ParamCheck(ParamAtIndex, IsReward, Note,ParamCount));
                 this.Note = FuncNote;
             }
         }
@@ -609,7 +616,9 @@ namespace PexInterface
                 {
                     if (Func.IndexChecks.Count > 0)
                     {
-                        Checks[Func.FunctionName].IndexChecks.Add(Func.IndexChecks[0]);
+                        var GetFrist = Func.IndexChecks.ToList()[0];
+
+                        Checks[Func.FunctionName].IndexChecks.Add(GetFrist.Key, GetFrist.Value);
                     }
                 }
                 else
@@ -617,40 +626,31 @@ namespace PexInterface
                     Checks.Add(Func.FunctionName, Func);
                 }
             }
-            public int CheckFuncByName(string FuncName, int ParamIndex = 0, int ParamCount = -1)
+            public int CheckFuncByName(string FuncName, int ParamAtIndex, int ParamCount)
             {
                 if (Checks.ContainsKey(FuncName))
                 {
                     var GetRule = Checks[FuncName];
 
-                    if (!GetRule.FullCheck)
+                    if (GetRule.IndexChecks.Count > 0)
                     {
-                        for (int i = 0; i < GetRule.IndexChecks.Count; i++)
+                        if (GetRule.IndexChecks.ContainsKey(ParamCount))
                         {
-                            if (GetRule.IndexChecks[i].Index == ParamIndex)
-                            {
-                                if (ParamCount == -1 || (GetRule.ParamCountLimit == ParamCount))
-                                {
-                                    int Score = GetRule.CheckScore();
-                                    Score = GetRule.IndexChecks[i].IsReward ? Math.Abs(Score) : -Math.Abs(Score);
-                                    return Score;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (GetRule.IndexChecks.Count > 0)
-                        {
-                            if (ParamCount == -1 || (GetRule.ParamCountLimit == ParamCount))
+                            if (GetRule.IndexChecks[ParamCount].ParamAtIndex == ParamAtIndex)
                             {
                                 int Score = GetRule.CheckScore();
-                                Score = GetRule.IndexChecks[0].IsReward ? Math.Abs(Score) : -Math.Abs(Score);
+                                Score = GetRule.IndexChecks[ParamCount].IsReward ? Math.Abs(Score) : -Math.Abs(Score);
                                 return Score;
                             }
                         }
+                        else
+                        if (GetRule.IndexChecks.ContainsKey(-1))
+                        {
+                            int Score = GetRule.CheckScore();
+                            Score = GetRule.IndexChecks[0].IsReward ? Math.Abs(Score) : -Math.Abs(Score);
+                            return Score;
+                        }
                     }
-
                 }
 
                 return ScoreEvaluator.Null;
