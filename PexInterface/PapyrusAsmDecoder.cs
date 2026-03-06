@@ -5,6 +5,7 @@ using System.Linq;
 using static PexInterface.PexReader;
 using System.Text.RegularExpressions;
 using static PapyrusAsmDecoder;
+using static PexInterface.PexHeuristicAnalysis;
 
 // Copyright (c) 2026 YD525
 // Licensed under the LGPL3.0 License.
@@ -309,11 +310,11 @@ public class PapyrusAsmDecoder
                 Arguments = instr.Arguments
             };
 
-            var orders = BuildOrders(block,instr, tempStrings);
-            Tracker.CheckCode(lineIdx++, opCode, orders);
+            var orders = BuildOrders(out Dictionary<AsmOrder, ushort> StrPos, block,instr, tempStrings);
+            Tracker.CheckCode(block, StrPos, lineIdx++, opCode, orders);
+            StrPos.Clear();
         }
 
-        block.TracksRef = Tracker;
         block.FunctionCode = "";
 
         // Decompile body
@@ -327,11 +328,13 @@ public class PapyrusAsmDecoder
     // ── Helper: convert one instruction's arguments to AsmOrder list ─────────────
 
     private List<AsmOrder> BuildOrders(
-         FunctionBlock BlockRef,
+        out Dictionary<AsmOrder,ushort> StrPos,
+        FunctionBlock BlockRef,
         PexInstruction Instruct,
         List<PexString> tempStrings)
     {
         var Orders = new List<AsmOrder>();
+        StrPos = new Dictionary<AsmOrder, ushort>();
 
         foreach (var Arg in Instruct.Arguments)
         {
@@ -376,11 +379,19 @@ public class PapyrusAsmDecoder
                     Order.InFo.Property = infoObj as PexProperty;
             }
 
+            
             // String literals get quotes
             if (Arg.Type == 2)
             {
+                if (Order.Value != null)
+                {
+                    if (Order.Value.Length > 0)
+                    {
+                        StrPos.Add(Order, StrEntry.Index);
+                    }
+                }
+                
                 Order.Value = "\"" + Order.Value + "\"";
-                BlockRef.Strings.Add(StrEntry);
             }   
 
             Orders.Add(Order);
@@ -474,9 +485,7 @@ public class FunctionBlock
     public bool IsGlobal = false;
     public bool IsNative = false;
 
-    public List<PexString> Strings = new List<PexString>();
-
-    public DecompileTracker TracksRef = null;
+    public List<PexStringExtend> Strings = new List<PexStringExtend>();
 }
 
 public class CastLink
@@ -675,7 +684,7 @@ public class AsmLink
         }
         return false;
     }
-    public void SetValue(string Value, AsmInFo InFo, TokenSeparator Separator)
+    public AsmLink SetValue(string Value, AsmInFo InFo, TokenSeparator Separator)
     {
         if (this.Value == null)
         {
@@ -684,6 +693,8 @@ public class AsmLink
             this.Separator = Separator;
             Tail = this;
             Head = null;
+
+            return this;   
         }
         else
         {
@@ -692,7 +703,7 @@ public class AsmLink
             var NewNode = new AsmLink
             {
                 Value = Value,
-                InFo =  InFo,
+                InFo = InFo,
                 Separator = Separator,
                 Prev = Head.Tail,
                 Head = Head
@@ -700,6 +711,8 @@ public class AsmLink
 
             Head.Tail.Next = NewNode;
             Head.Tail = NewNode;
+
+            return NewNode;   
         }
     }
     public string GetValueByIndex(int Index)
@@ -823,7 +836,7 @@ public class AsmLink
         return Line;
     }
 
-    public static void ParseLink(ref AsmLink Links, List<AsmOrder> Orders)
+    public static void ParseLink(FunctionBlock BlockRef, Dictionary<AsmOrder, ushort> StrPos,ref AsmLink Links, List<AsmOrder> Orders)
     {
         TokenSeparator PendingSeparator = TokenSeparator.Null;
 
@@ -832,12 +845,28 @@ public class AsmLink
             if (Order.Value.StartsWith("::"))
             {
                 PendingSeparator = TokenSeparator.DoubleColon;
-                Links.SetValue(Order.Value.Substring("::".Length),Order.InFo,PendingSeparator);
+                var CurrentLink = Links.SetValue(Order.Value.Substring("::".Length),Order.InFo,PendingSeparator);
+
+                if (StrPos.ContainsKey(Order))
+                {
+                    PexString NPexString = new PexString();
+                    NPexString.Value = Order.Value;
+                    NPexString.Index = StrPos[Order];
+                    BlockRef.Strings.Add(new PexStringExtend(NPexString,CurrentLink));
+                }
             }
             else
             {
                 PendingSeparator = TokenSeparator.Space;
-                Links.SetValue(Order.Value,Order.InFo,PendingSeparator);
+                var CurrentLink = Links.SetValue(Order.Value,Order.InFo,PendingSeparator);
+
+                if (StrPos.ContainsKey(Order))
+                {
+                    PexString NPexString = new PexString();
+                    NPexString.Value = Order.Value;
+                    NPexString.Index = StrPos[Order];
+                    BlockRef.Strings.Add(new PexStringExtend(NPexString, CurrentLink));
+                }
             }
         }
     }
@@ -1001,9 +1030,9 @@ public class AsmBase
     public int SpaceCount = 0;
     public AsmLink Links = new AsmLink();
 
-    protected void ParseLink(List<AsmOrder> Orders)
+    protected void ParseLink(FunctionBlock BlockRef, Dictionary<AsmOrder, ushort> StrPos, List<AsmOrder> Orders)
     {
-        AsmLink.ParseLink(ref Links, Orders);
+        AsmLink.ParseLink(BlockRef,StrPos,ref Links, Orders);
     }
 
 }
@@ -1047,10 +1076,10 @@ public class AsmCode:AsmBase
     { 
        this.LineIndex = LineIndex;
     }
-    public void Parse(AsmOPCode OPCode, List<AsmOrder> Orders)
+    public void Parse(FunctionBlock BlockRef, Dictionary<AsmOrder, ushort> StrPos,AsmOPCode OPCode, List<AsmOrder> Orders)
     {
         this.OPCode = OPCode;
-        this.ParseLink(Orders);
+        this.ParseLink(BlockRef,StrPos,Orders);
     }
 
     public string GetAsmCode()
@@ -1079,10 +1108,10 @@ public class DecompileTracker
     public VariableTracker Variables = new VariableTracker();
 
     public List<AsmCode> Lines = new List<AsmCode>();
-    public void CheckCode(int LineIndex,AsmOPCode OPCode,List<AsmOrder> Orders)
+    public void CheckCode(FunctionBlock BlockRef, Dictionary<AsmOrder, ushort> StrPos,int LineIndex,AsmOPCode OPCode,List<AsmOrder> Orders)
     {
         AsmCode NewLine = new AsmCode(LineIndex);
-        NewLine.Parse(OPCode,Orders);
+        NewLine.Parse(BlockRef,StrPos,OPCode,Orders);
         Lines.Add(NewLine);
     }
 }

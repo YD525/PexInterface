@@ -299,7 +299,7 @@ namespace PexInterface
 
                     int SpaceCount = 2;
 
-                    foreach (var GetLine in GetFunc.TracksRef.Lines)
+                    foreach (var GetLine in GetFunc.TrackerRef.Lines)
                     {
                         string SetCode = GetLine.PSCCode;
                         if (string.IsNullOrEmpty(SetCode)) continue;
@@ -366,7 +366,6 @@ namespace PexInterface
             {
                 foreach (var GetString in Function.Strings)
                 {
-                    if(GetString.Value.Trim().Length>0)
                     this.Strings.Add(new PexStringItem(Function,GetString));
                 }
             }
@@ -401,6 +400,23 @@ namespace PexInterface
             GC.SuppressFinalize(this);
         }
 
+        public class PexStringExtend
+        {
+            public ushort Index { get; set; }
+            private string Value { get; set; }
+            public AsmLink Link  { get; set; }
+
+            public PexStringExtend(PexString Str, AsmLink Link)
+            {
+                 this.Index = Str.Index;
+                 this.Value = Str.Value; 
+                 this.Link = Link;
+            }
+            public string GetValue()
+            {
+                return Value.Substring(1, Value.Length - 2);
+            }
+        }
 
         public class PexStringItem
         {
@@ -416,11 +432,11 @@ namespace PexInterface
                 return string.Empty;
             }
 
-            public PexStringItem(FunctionBlock FunctionRef, PexString Item)
+            public PexStringItem(FunctionBlock FunctionRef, PexStringExtend Item)
             {
                 this.FunctionRef = FunctionRef;
                 this.StringTableID = Item.Index;
-                this.Original = Item.Value;
+                this.Original = string.Copy(Item.GetValue());
 
                 this.UniqueKey = GenUniqueKey(FunctionRef);
                 GC.Collect();
