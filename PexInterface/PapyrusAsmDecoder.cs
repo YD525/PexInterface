@@ -42,12 +42,9 @@ public class PapyrusAsmDecoder
     }
 
     public static string Version = "1.0.3 Beta";
-    public PexReader Reader;
 
-    public PapyrusAsmDecoder(PexReader CurrentReader)
-    {
-        this.Reader = CurrentReader;
-    }
+    public PexReader Reader = null;
+
     public enum ObjType
     {
         Null = 0, Variables = 1, Properties = 2, Functions = 3, DebugInfo = 5
@@ -407,7 +404,7 @@ public class PapyrusAsmDecoder
 
         return Orders;
     }
-    public void Decompile(out PexHeuristicAnalysis Analyst, bool CanSkipPscDeCode = false)
+    public PscCls Decompile(bool CanSkipPscDeCode = false)
     {
         List<PexString> TempStrings = new List<PexString>();
 
@@ -421,7 +418,7 @@ public class PapyrusAsmDecoder
 
         GenPsc.Functions = DeFunction(GenPsc,TempStrings, CanSkipPscDeCode);
 
-        Analyst = new PexHeuristicAnalysis(GenPsc,this);
+        return GenPsc;
     }
 }
 
@@ -862,6 +859,7 @@ public class AsmLink
                     NPexString.Value = Order.DefValue;
                     NPexString.Index = Order.Index;
                     BlockRef.Strings.Add(new PexStringExtend(NPexString,CurrentLink));
+                    StrPos.Remove(Order.Index);
                 }
             }
             else
@@ -876,6 +874,7 @@ public class AsmLink
                     NPexString.Value = Order.DefValue;
                     NPexString.Index = Order.Index;
                     BlockRef.Strings.Add(new PexStringExtend(NPexString, CurrentLink));
+                    StrPos.Remove(Order.Index);
                 }
             }
         }
@@ -1116,7 +1115,6 @@ public class AsmCode:AsmBase
 public class DecompileTracker
 {
     public VariableTracker Variables = new VariableTracker();
-
     public List<AsmCode> Lines = new List<AsmCode>();
     public void CheckCode(FunctionBlock BlockRef, List<ushort> StrPos,int LineIndex,AsmOPCode OPCode,List<AsmOrder> Orders)
     {

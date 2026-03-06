@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
+using static System.Net.Mime.MediaTypeNames;
 using static PexInterface.PexHeuristicAnalysis;
 using static PexInterface.PexReader;
 
@@ -13,9 +15,10 @@ namespace PexInterface
 
     public class PexAnalysisPipeline
     {
+        public PexReader Reader = new PexReader();
         public PexHeuristicAnalysis HeuristicCore = null;
         public PexAnalysisPipeline(PexHeuristicAnalysis HeuristicCore)
-        { 
+        {
             this.HeuristicCore = HeuristicCore;
         }
         public PexAnalysisPipeline ReadStrings()
@@ -24,7 +27,21 @@ namespace PexInterface
             return this;
         }
 
-        public PexAnalysisPipeline GetStrings(out List<PexStringItem> StringsRef,string Type = "")
+        public object FileReadLocker = new object();
+        public PexAnalysisPipeline LoadPex(string Path)
+        {
+            lock (FileReadLocker)
+            {
+                Close();
+                Reader.LoadPex(Path);
+                this.HeuristicCore.AsmDecoder.Reader = Reader;
+                this.HeuristicCore.CurrentCls = this.HeuristicCore.AsmDecoder.Decompile();
+                this.HeuristicCore.Init();
+                return this;
+            }
+          
+        }
+        public PexAnalysisPipeline GetStrings(out List<PexStringItem> StringsRef, string Type = "")
         {
             StringsRef = this.HeuristicCore.GetStrings(Type);
             return this;
@@ -34,15 +51,20 @@ namespace PexInterface
             HeuristicCore.AnalysisStrings();
             return this;
         }
-        public PexAnalysisPipeline GetPsc(out string Psc,bool ShowNode)
+        public PexAnalysisPipeline GetPsc(out string Psc, bool ShowNode, CodeGenStyle Style)
         {
-            Psc = HeuristicCore.GetPsc(ShowNode);
+            Psc = HeuristicCore.GetPsc(ShowNode, Style);
+            return this;
+        }
+        public PexAnalysisPipeline Close()
+        {
+            Reader.Close();
+            HeuristicCore.Close();
             return this;
         }
     }
     public class PexHeuristicAnalysis
     {
-
         public static string Version = "1.0.2 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
@@ -69,12 +91,17 @@ namespace PexInterface
 
         public PexAnalysisPipeline Core = null;
 
-        public PapyrusAsmDecoder AsmDecoder = null;
+        public PexHeuristicAnalysis()
+        {
+            Core = new PexAnalysisPipeline(this);
+        }
+
+        public PapyrusAsmDecoder AsmDecoder = new PapyrusAsmDecoder();
 
 
         public FuncRule FuncNameCheck = null;
 
-        public Dictionary<string, List<PexStringItem>> Strings  = new Dictionary<string, List<PexStringItem>>();
+        public Dictionary<string, List<PexStringItem>> Strings = new Dictionary<string, List<PexStringItem>>();
         public List<string> Types = new List<string>();
 
         public PscCls CurrentCls = new PscCls();
@@ -89,24 +116,15 @@ namespace PexInterface
             return Space;
         }
 
-        public PexHeuristicAnalysis(PscCls SetClass,PapyrusAsmDecoder Decoder)
-        {
-            this.AsmDecoder = Decoder;
-            Strings.Clear();
-            CurrentCls = SetClass;
-            this.Core = new PexAnalysisPipeline(this);
-            Init();
-        }
-
         public void Init()
         {
             FuncNameCheck = new FuncRule();
 
             //Safe
-            FuncNameCheck.Add(new FunctionCheck("NotifyPlayer",0,true,ApiType.FrameworkApi,-1, "DD Api"));
-            FuncNameCheck.Add(new FunctionCheck("NotifyNPC",0,true,ApiType.FrameworkApi, -1, "DD Api"));
+            FuncNameCheck.Add(new FunctionCheck("NotifyPlayer", 0, true, ApiType.FrameworkApi, -1, "DD Api"));
+            FuncNameCheck.Add(new FunctionCheck("NotifyNPC", 0, true, ApiType.FrameworkApi, -1, "DD Api"));
 
-            FuncNameCheck.Add(new FunctionCheck("AddSliderOption",0,true,ApiType.FrameworkApi, -1, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddSliderOption", 0, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
             FuncNameCheck.Add(new FunctionCheck("AddSliderOptionST", 1, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
 
             FuncNameCheck.Add(new FunctionCheck("AddTextOption", 0, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
@@ -118,9 +136,9 @@ namespace PexInterface
 
             FuncNameCheck.Add(new FunctionCheck("SetGameSettingString", 1, true, ApiType.UnknownAPI, -1, ""));
             FuncNameCheck.Add(new FunctionCheck("ShowMessage", 0, true, ApiType.FrameworkApi, 1, ""));
-    
+
             //Danger
-            FuncNameCheck.Add(new FunctionCheck("DamageActorValue", 0, false, ApiType.NativeApi, -1, "Game Api","",true));
+            FuncNameCheck.Add(new FunctionCheck("DamageActorValue", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
             FuncNameCheck.Add(new FunctionCheck("SendModEvent", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
             FuncNameCheck.Add(new FunctionCheck("AnimSwitchKeyword", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
             FuncNameCheck.Add(new FunctionCheck("StartThirdPersonAnimation", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
@@ -129,13 +147,13 @@ namespace PexInterface
             FuncNameCheck.Add(new FunctionCheck("Create", 0, false, ApiType.NativeApi, -1, "Game Api", "", true));
 
             FuncNameCheck.Add(new FunctionCheck("UnSetFormValue", 0, false, ApiType.NativeApi, -1, "StorageUtil Api", "", true));
-        
+
 
             FuncNameCheck.Add(new FunctionCheck("AttrDrain", 0, false, ApiType.FrameworkApi, -1, "SkSE Api", "", true));
             FuncNameCheck.Add(new FunctionCheck("RandomExpressionByTag", 0, false, ApiType.FrameworkApi, -1, "SexLab Api", "", true));
             FuncNameCheck.Add(new FunctionCheck("SendDeviceEvent", 0, false, ApiType.FrameworkApi, -1, "DD Api", "", true));
         }
-        public string GetPsc(bool ShowNote,CodeGenStyle Style = CodeGenStyle.CSharp)
+        public string GetPsc(bool ShowNote, CodeGenStyle Style = CodeGenStyle.CSharp)
         {
             StringBuilder Content = new StringBuilder();
 
@@ -270,7 +288,7 @@ namespace PexInterface
 
                     if (Style == CodeGenStyle.Papyrus)
                     {
-                        GenLine = string.Format(GenSpace(1) + "{0} Function {1}({2})", GetFunc.ReturnType,GetFunc.FunctionName, GenParams);
+                        GenLine = string.Format(GenSpace(1) + "{0} Function {1}({2})", GetFunc.ReturnType, GetFunc.FunctionName, GenParams);
                     }
                     else
                     if (Style == CodeGenStyle.CSharp)
@@ -288,11 +306,11 @@ namespace PexInterface
                         else
                         if (GetFunc.IsNative)
                         {
-                            GenLine = string.Format(GenSpace(1) + "public static {0} {1}({2})\n", TempReturnType,GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
+                            GenLine = string.Format(GenSpace(1) + "public static {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
                         }
                         else
                         {
-                            GenLine = string.Format(GenSpace(1) + "private static {0} {1}({2})\n", TempReturnType,GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
+                            GenLine = string.Format(GenSpace(1) + "private static {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
                         }
                     }
 
@@ -355,68 +373,90 @@ namespace PexInterface
 
             return Content.ToString();
         }
-
         public void ReadStrings()
         {
             this.Strings.Clear();
 
-            List<PexString> TempStrings = new List<PexString>();
-            TempStrings.AddRange(this.AsmDecoder.Reader.StringTable);
-
+            HashSet<ushort> IDs = new HashSet<ushort>();
             foreach (var Function in this.CurrentCls.Functions)
             {
                 if (!this.Strings.ContainsKey(Function.FunctionName))
                 {
-                    this.Strings.Add(Function.FunctionName,new List<PexStringItem>());
+                    this.Strings.Add(Function.FunctionName, new List<PexStringItem>());
                 }
+
+                Regex PlaceholderRegex = new Regex(@"^\{\d+\}$");
+
                 foreach (var GetString in Function.Strings)
                 {
                     if (GetString.Value.Length > 0)
                     {
-                        this.Strings[Function.FunctionName].Add(new PexStringItem(Function, GetString));
+                        if (!PlaceholderRegex.IsMatch(GetString.Value))
+                        {
+                            if (!IDs.Contains(GetString.Index))
+                            {
+                                this.Strings[Function.FunctionName].Add(new PexStringItem(Function, GetString));
+                                IDs.Add(GetString.Index);
+                            }
+                            else
+                            { 
+                            
+                            }
+                        }
                     }
                 }
             }
         }
 
-        public List<PexStringItem> GetStrings(string Type ="")
+        public List<PexStringItem> GetStrings(string Type = "")
         {
+            List<PexStringItem> Result = new List<PexStringItem>();
+
             if (Type == "")
             {
-                List<PexStringItem> TempArray = new List<PexStringItem>();
-                foreach (var Function in this.CurrentCls.Functions)
+                foreach (var KV in Strings)
                 {
-                    TempArray.AddRange(Strings[Function.FunctionName]);
+                    Result.AddRange(KV.Value);
                 }
-                return TempArray;
             }
             else
             {
-                return Strings[Type];
+                if (Strings.ContainsKey(Type))
+                {
+                    Result.AddRange(Strings[Type]);
+                }
             }
+
+            return Result;
         }
 
         public void AnalysisStrings()
-        { 
-        
+        {
+
         }
 
-        public void SaveAll(string Output)
+        public int SaveAll(string Output)
         {
-            var LocalStrings = GetStrings();
-            int ModifyCount = 0;
-            for (int i = 0; i < LocalStrings.Count; i++)
+            try
             {
-                if (LocalStrings[i].Translated.Length > 0)
+                var LocalStrings = GetStrings();
+                int ModifyCount = 0;
+                for (int i = 0; i < LocalStrings.Count; i++)
                 {
-                    PexInterop.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
-                    ModifyCount++;
+                    if (LocalStrings[i].Translated.Length > 0)
+                    {
+                        PexInterop.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
+                        ModifyCount++;
+                    }
                 }
+                if (ModifyCount > 0)
+                {
+                    return PexInterop.SavePex(Output);
+                }
+
+                return 0;
             }
-            if (ModifyCount > 0)
-            {
-                PexInterop.SavePex(Output);
-            }
+            catch { return -1; }
         }
 
         public void Close()
@@ -424,7 +464,6 @@ namespace PexInterface
             this.CurrentCls = null;
             this.Types.Clear();
             this.Strings.Clear();
-            this.AsmDecoder?.Reader.Close();
             PexInterop.Close();
             GC.SuppressFinalize(this);
         }
@@ -433,13 +472,13 @@ namespace PexInterface
         {
             public ushort Index { get; set; }
             public string Value { get; set; }
-            public AsmLink Link  { get; set; }
+            public AsmLink Link { get; set; }
 
             public PexStringExtend(PexString Str, AsmLink Link)
             {
-                 this.Index = Str.Index;
-                 this.Value = Str.Value; 
-                 this.Link = Link;
+                this.Index = Str.Index;
+                this.Value = Str.Value;
+                this.Link = Link;
             }
         }
 
@@ -452,7 +491,7 @@ namespace PexInterface
             public string Original = "";
             public string Translated = "";
 
-            public static string GenUniqueKey(FunctionBlock Func,PexStringExtend StringItem)
+            public static string GenUniqueKey(FunctionBlock Func, PexStringExtend StringItem)
             {
                 var GetHead = StringItem.Link.GetHead();
                 var GetPrev = StringItem.Link.Prev;
@@ -466,7 +505,7 @@ namespace PexInterface
 
                 //AutoMerge += "_" + StringItem.Index;
 
-                string SetKey = Crc32Helper.ComputeCrc32(Func.FunctionName +"_"+ AutoMerge);
+                string SetKey = Crc32Helper.ComputeCrc32(Func.FunctionName + "_" + AutoMerge);
                 return SetKey;
             }
 
@@ -476,8 +515,7 @@ namespace PexInterface
                 this.StringTableID = Item.Index;
                 this.Original = string.Copy(Item.Value);
 
-                this.UniqueKey = GenUniqueKey(FunctionRef,Item);
-                GC.Collect();
+                this.UniqueKey = GenUniqueKey(FunctionRef, Item);
             }
         }
 
@@ -493,7 +531,7 @@ namespace PexInterface
 
         public enum ApiType
         {
-            UnknownAPI = 0,NativeApi = 1,FrameworkApi = 2
+            UnknownAPI = 0, NativeApi = 1, FrameworkApi = 2
         }
 
         public class ParamCheck
@@ -531,12 +569,12 @@ namespace PexInterface
                 }
                 return 0;
             }
-            public FunctionCheck(string FuncName, int ParamIndex,bool IsReward, ApiType Type,int ParamCountLimit,string FuncNote ="", string ParamNote = "",bool FullCheck = false)
+            public FunctionCheck(string FuncName, int ParamIndex, bool IsReward, ApiType Type, int ParamCountLimit, string FuncNote = "", string ParamNote = "", bool FullCheck = false)
             {
                 this.FunctionName = FuncName;
                 this.Type = Type;
                 this.FullCheck = FullCheck;
-                this.IndexChecks = new List<ParamCheck>() { new ParamCheck(ParamIndex,IsReward, Note)};
+                this.IndexChecks = new List<ParamCheck>() { new ParamCheck(ParamIndex, IsReward, Note) };
                 this.ParamCountLimit = ParamCountLimit;
                 this.Note = FuncNote;
             }
@@ -558,7 +596,7 @@ namespace PexInterface
                     Checks.Add(Func.FunctionName, Func);
                 }
             }
-            public int CheckFuncByName(string FuncName, int ParamIndex = 0,int ParamCount = -1)
+            public int CheckFuncByName(string FuncName, int ParamIndex = 0, int ParamCount = -1)
             {
                 if (Checks.ContainsKey(FuncName))
                 {
@@ -591,7 +629,7 @@ namespace PexInterface
                             }
                         }
                     }
-                  
+
                 }
 
                 return ScoreEvaluator.Null;

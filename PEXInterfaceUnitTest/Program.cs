@@ -7,30 +7,27 @@ namespace PEXInterfaceUnitTest
 {
     internal class Program
     {
-        public static PexReader Reader = new PexReader();
-        public static void LoadPex(string PexPath)
+        public static PexHeuristicAnalysis LoadPex(string PexPath)
         {
-            Reader.LoadPex(PexPath);
-            new PapyrusAsmDecoder(Reader).Decompile(out PexHeuristicAnalysis Analysis);
-
-            Analysis.Core.GetPsc(out string Psc,false).ReadStrings().GetStrings(out List<PexStringItem> Strings);
+            PexHeuristicAnalysis Analysis = new PexHeuristicAnalysis();
+            Analysis.Core.LoadPex(PexPath).GetPsc(out string Psc, false, CodeGenStyle.CSharp)
+            .ReadStrings().GetStrings(out List<PexStringItem> Strings);
 
             foreach (var GetStr in Strings)
             {
                 Console.WriteLine(string.Format("Key:{0},Value:{1}",GetStr.UniqueKey,GetStr.Original));
             }
+
+            return Analysis;
             //Console.WriteLine(Psc);
         }
         static void Main(string[] args)
         {
             //_wetquestscript.pex
             //LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
-            LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
+            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex");
             Console.ReadKey();
-            foreach (var Get in Reader.StringTable)
-            {
-                //...
-            }
+           
         }
     }
 }
