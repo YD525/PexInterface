@@ -23,7 +23,12 @@ namespace PexInterface
         }
         public StringsReadResult AnalysisStrings()
         {
-            this.AnalysisStrings();
+            HeuristicCore.AnalysisStrings();
+            return this;
+        }
+        public StringsReadResult GetPsc(ref string Psc)
+        {
+            Psc = HeuristicCore.GetPsc();
             return this;
         }
     }
