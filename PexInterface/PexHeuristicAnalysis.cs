@@ -437,7 +437,7 @@ namespace PexInterface
 
                 //AutoMerge += "_" + StringItem.Index;
 
-                string SetName = Func.FunctionName +"_"+ AutoMerge;
+                string SetName = Crc32Helper.ComputeCrc32(Func.FunctionName +"_"+ AutoMerge);
                 return SetName;
             }
 

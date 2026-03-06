@@ -61,6 +61,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AsmExtend.cs" />
+    <Compile Include="Crc32Helper.cs" />
     <Compile Include="PapyrusAsmDecoder.cs" />
     <Compile Include="PexHeuristicAnalysis.cs" />
     <Compile Include="PexReader.cs" />
