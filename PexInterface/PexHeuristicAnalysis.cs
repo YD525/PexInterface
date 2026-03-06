@@ -473,11 +473,6 @@ namespace PexInterface
                 {
                     var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
 
-                    if (FuncStrs[i].Original.Equals(": Updating script to version 2"))
-                    {
-
-                    }
-
                     FuncStrs[i].Score = -1;
 
                     if (FuncStrs[i].Original.StartsWith("$"))
@@ -501,6 +496,8 @@ namespace PexInterface
                             FuncStrs[i].Score -= 20;
                         }
                     }
+
+                    FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
                 }
             }
         }
@@ -561,6 +558,7 @@ namespace PexInterface
         {
             public string UniqueKey = "";
             public FunctionBlock FunctionRef = null;
+            public PexStringExtend PexStringItemRef = null;
             public ushort StringTableID = 0;
             public int Score = 0;
             public string Original = "";
@@ -584,7 +582,7 @@ namespace PexInterface
                 return false;
             }
 
-            public static string GenUniqueKey(FunctionBlock Func, PexStringExtend StringItem)
+            public static string GenUniqueKey(int Score, FunctionBlock Func, PexStringExtend StringItem)
             {
                 var GetHead = StringItem.Link.GetHead();
                 var GetPrev = StringItem.Link.Prev;
@@ -598,17 +596,18 @@ namespace PexInterface
 
                 //AutoMerge += "_" + StringItem.Index;
 
-                string SetKey = Crc32Helper.ComputeCrc32(Func.FunctionName + "_" + AutoMerge);
+                string SetKey = Crc32Helper.ComputeCrc32(Score + "_" + Func.FunctionName + "_" + AutoMerge);
                 return SetKey;
             }
 
             public PexStringItem(FunctionBlock FunctionRef, PexStringExtend Item)
             {
                 this.FunctionRef = FunctionRef;
+                this.PexStringItemRef = Item;
+
                 this.StringTableID = Item.Index;
                 this.Original = string.Copy(Item.Value);
-
-                this.UniqueKey = GenUniqueKey(FunctionRef, Item);
+                this.Translated = string.Empty;
             }
         }
 
