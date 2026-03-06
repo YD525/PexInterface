@@ -445,13 +445,13 @@ namespace PexInterface
                 {
                     if (LocalStrings[i].Translated.Length > 0)
                     {
-                        PexInterop.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
+                        Core.Reader.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
                         ModifyCount++;
                     }
                 }
                 if (ModifyCount > 0)
                 {
-                    return PexInterop.SavePex(Output);
+                    return Core.Reader.SavePex(Output);
                 }
 
                 return 0;
@@ -464,7 +464,7 @@ namespace PexInterface
             this.CurrentCls = null;
             this.Types.Clear();
             this.Strings.Clear();
-            PexInterop.Close();
+            Core.Reader.Close();
             GC.SuppressFinalize(this);
         }
 
