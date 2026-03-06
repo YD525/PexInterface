@@ -131,6 +131,7 @@ namespace PexInterface
             FuncNameCheck.Add(new FunctionCheck("NotifyPlayer", 0, true, ApiType.FrameworkApi, -1, "DD Api"));
             FuncNameCheck.Add(new FunctionCheck("NotifyNPC", 0, true, ApiType.FrameworkApi, -1, "DD Api"));
 
+
             FuncNameCheck.Add(new FunctionCheck("AddSliderOption", 0, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
             FuncNameCheck.Add(new FunctionCheck("AddSliderOptionST", 1, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
 
@@ -143,10 +144,12 @@ namespace PexInterface
 
             FuncNameCheck.Add(new FunctionCheck("SetGameSettingString", 1, true, ApiType.UnknownAPI, -1, ""));
             FuncNameCheck.Add(new FunctionCheck("ShowMessage", 0, true, ApiType.FrameworkApi, 1, ""));
+            FuncNameCheck.Add(new FunctionCheck("Setinfotext", 0, true, ApiType.FrameworkApi, 1, ""));
 
             FuncNameCheck.Add(new FunctionCheck("Trace", 0, true, ApiType.NativeApi, 1, ""));
             FuncNameCheck.Add(new FunctionCheck("Trace", 0, true, ApiType.NativeApi, 2, ""));
-    
+            FuncNameCheck.Add(new FunctionCheck("Notification", 0, true, ApiType.NativeApi, 1, ""));
+
 
             //Danger
             FuncNameCheck.Add(new FunctionCheck("DamageActorValue", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
@@ -450,20 +453,30 @@ namespace PexInterface
                 {
                     var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
 
+                    if (FuncStrs[i].Original.Contains("配置导入成功"))
+                    {
+
+                    }
+
                     FuncStrs[i].Score = -1;
 
+                    if (FuncStrs[i].Original.StartsWith("$"))
+                    {
+                        FuncStrs[i].Score = -100;
+                    }
+                    else
                     if (DangerFunctions.Contains(SetFlow.ConsumedByMethodName))
                     {
                         FuncStrs[i].Score = -100;
                     }
                     else
-                    if (SetFlow.ConsumedByMethodName.Length > 0)
+                    if (SetFlow.ConsumedByMethodName?.Length > 0)
                     {
                         FuncStrs[i].Score += FuncNameCheck.CheckFuncByName(SetFlow.CallInfo.MethodName, SetFlow.CallInfo.StringArgIndex, SetFlow.CallInfo.TotalArgCount);
                     }
                     else
-                    { 
-                    
+                    {
+
                     }
                 }
             }

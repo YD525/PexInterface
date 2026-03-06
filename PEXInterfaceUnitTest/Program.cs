@@ -66,7 +66,7 @@ namespace PEXInterfaceUnitTest
             }
 
             //LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
-            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
+            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex");
             Console.ReadKey();
            
         }
