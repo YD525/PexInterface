@@ -1,18 +1,38 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.Remoting.Messaging;
 using System.Text;
+using static PexInterface.PexReader;
 
 namespace PexInterface
 {
     // Copyright (c) 2026 YD525
     // Licensed under the LGPL3.0 License.
     // See LICENSE file in the project root for full license information.
+
+    public class StringsReadResult
+    {
+        public PexHeuristicAnalysis HeuristicCore = null;
+        public StringsReadResult(PexHeuristicAnalysis HeuristicCore)
+        { 
+            this.HeuristicCore = HeuristicCore;
+        }
+        public StringsReadResult OutPut()
+        {
+            return this;
+        }
+        public StringsReadResult AnalysisStrings()
+        {
+            this.AnalysisStrings();
+            return this;
+        }
+    }
     public class PexHeuristicAnalysis
     {
-        public static string Version = "1.0.0 Alpha";
+        public static string Version = "1.0.1 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
-      
+
 
         //public static List<string> UserDefinedSafeFuncs = new List<string>() {
         //"Notify", "notify",
@@ -33,6 +53,8 @@ namespace PexInterface
         //"ConsoleLog", "consoleLog",
         //};
 
+        public PapyrusAsmDecoder AsmDecoder = null;
+
 
         public FuncRule FuncNameCheck = null;
 
@@ -49,10 +71,12 @@ namespace PexInterface
             return Space;
         }
 
-        public PexHeuristicAnalysis(PscCls SetClass)
+        public PexHeuristicAnalysis(PscCls SetClass,PapyrusAsmDecoder Decoder)
         {
+            this.AsmDecoder = Decoder;
             Strings.Clear();
             CurrentCls = SetClass;
+
             Init();
         }
 
@@ -257,7 +281,7 @@ namespace PexInterface
 
                     if (Style == CodeGenStyle.Papyrus)
                     {
-                        Content.AppendLine(GenSpace(1) + "EndFunction");
+                        Content.AppendLine(GenSpace(1) + "EndFunction\n");
                     }
                     else
                     if (Style == CodeGenStyle.CSharp)
@@ -269,6 +293,28 @@ namespace PexInterface
             }
 
             return Content.ToString();
+        }
+
+        public StringsReadResult ReadStrings()
+        {
+            this.Strings.Clear();
+
+            List<PexString> TempStrings = new List<PexString>();
+            TempStrings.AddRange(this.AsmDecoder.Reader.StringTable);
+
+            foreach (var GetString in TempStrings)
+            {
+                if (GetString.IsStr())
+                {
+                    this.Strings.Add(new PexStringItem(GetString));
+                }
+            }
+            return new StringsReadResult(this);
+        }
+
+        public void AnalysisStrings()
+        { 
+        
         }
 
         public void SaveAll(string Output)
@@ -304,6 +350,11 @@ namespace PexInterface
             public int Score = 0;
             public string Original = "";
             public string Translated = "";
+
+            public PexStringItem(PexString Item)
+            { 
+            
+            }
         }
 
 

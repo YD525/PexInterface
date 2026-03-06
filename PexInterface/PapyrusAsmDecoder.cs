@@ -325,62 +325,62 @@ public class PapyrusAsmDecoder
     // ── Helper: convert one instruction's arguments to AsmOrder list ─────────────
 
     private List<AsmOrder> BuildOrders(
-        PexInstruction instr,
+        PexInstruction Instruct,
         List<PexString> tempStrings)
     {
-        var orders = new List<AsmOrder>();
+        var Orders = new List<AsmOrder>();
 
-        foreach (var arg in instr.Arguments)
+        foreach (var Arg in Instruct.Arguments)
         {
-            switch (arg.Type)
+            switch (Arg.Type)
             {
                 case 0: // null / None
-                    orders.Add(new AsmOrder("None"));
+                    Orders.Add(new AsmOrder("None"));
                     continue;
 
                 case 3: // integer literal
-                    orders.Add(new AsmOrder(arg.Value?.ToString() ?? "0"));
+                    Orders.Add(new AsmOrder(Arg.Value?.ToString() ?? "0"));
                     continue;
 
                 case 4: // float literal
-                    orders.Add(new AsmOrder(arg.Value?.ToString() ?? "0.0"));
+                    Orders.Add(new AsmOrder(Arg.Value?.ToString() ?? "0.0"));
                     continue;
 
                 case 5: // bool literal
-                    orders.Add(new AsmOrder(
-                        arg.Value is bool b && b ? "True" : "False"));
+                    Orders.Add(new AsmOrder(
+                        Arg.Value is bool b && b ? "True" : "False"));
                     continue;
             }
 
             // Types 1 (identifier) and 2 (string) — index into string table
-            int idx = ObjToInt(arg.Value);
-            if (idx < 0) continue;
+            int Index = ObjToInt(Arg.Value);
+            if (Index < 0) continue;
 
-            var strEntry = tempStrings[idx];
-            var order = new AsmOrder(strEntry.Value.Trim());
+            var StrEntry = tempStrings[Index];
+            var Order = new AsmOrder(StrEntry.Value.Trim());
 
             // Attach metadata (variable / function / property info)
             ObjType infoType = ObjType.Null;
-            var infoObj = QueryAnyByID(strEntry.Index, ref infoType);
+            var infoObj = QueryAnyByID(StrEntry.Index, ref infoType);
             if (infoObj != null)
             {
-                order.InFo = new AsmInFo();
+                Order.InFo = new AsmInFo();
                 if (infoType == ObjType.Variables)
-                    order.InFo.Variable = infoObj as PexVariable;
+                    Order.InFo.Variable = infoObj as PexVariable;
                 else if (infoType == ObjType.Functions)
-                    order.InFo.Function = (infoObj as List<PexFunction>)?[0];
+                    Order.InFo.Function = (infoObj as List<PexFunction>)?[0];
                 else if (infoType == ObjType.Properties)
-                    order.InFo.Property = infoObj as PexProperty;
+                    Order.InFo.Property = infoObj as PexProperty;
             }
 
             // String literals get quotes
-            if (arg.Type == 2)
-                order.Value = "\"" + order.Value + "\"";
+            if (Arg.Type == 2)
+                Order.Value = "\"" + Order.Value + "\"";
 
-            orders.Add(order);
+            Orders.Add(Order);
         }
 
-        return orders;
+        return Orders;
     }
     public void Decompile(out PexHeuristicAnalysis Analyst, bool CanSkipPscDeCode = false)
     {
@@ -396,7 +396,7 @@ public class PapyrusAsmDecoder
 
         GenPsc.Functions = DeFunction(GenPsc,TempStrings, CanSkipPscDeCode);
 
-        Analyst = new PexHeuristicAnalysis(GenPsc);
+        Analyst = new PexHeuristicAnalysis(GenPsc,this);
     }
 }
 

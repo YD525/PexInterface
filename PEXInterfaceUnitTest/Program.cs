@@ -10,7 +10,10 @@ namespace PEXInterfaceUnitTest
         {
             Reader.LoadPex(PexPath);
             new PapyrusAsmDecoder(Reader).Decompile(out PexHeuristicAnalysis Analyst);
-            Console.Write(Analyst.GetPsc(CodeGenStyle.CSharp));
+
+            Analyst.ReadAndAnalysisString();
+
+            Console.Write(Analyst.GetPsc(CodeGenStyle.Papyrus));
         }
         static void Main(string[] args)
         {
