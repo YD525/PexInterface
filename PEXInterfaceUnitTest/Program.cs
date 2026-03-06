@@ -12,7 +12,7 @@ namespace PEXInterfaceUnitTest
         {
             PexHeuristicAnalysis Analysis = new PexHeuristicAnalysis();
             Analysis.Core.LoadPex(PexPath).GetPsc(out string Psc, false, CodeGenStyle.CSharp)
-            .ReadStrings().GetStrings(out List<PexStringItem> Strings).AnalysisStrings();
+            .ReadStrings().AnalysisStrings().GetStrings(out List<PexStringItem> Strings);
 
             foreach (var GetStr in Strings)
             {
@@ -66,7 +66,7 @@ namespace PEXInterfaceUnitTest
             }
 
             //LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
-            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex");
+            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestMod\\Yet Another Difficulty Mod-80224-3-0-1-1718235810\\Scripts\\YetAnotherDifficultyMod.pex");
             Console.ReadKey();
            
         }

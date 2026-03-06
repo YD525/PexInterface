@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using static System.Net.Mime.MediaTypeNames;
@@ -122,34 +123,41 @@ namespace PexInterface
             return Space;
         }
 
-        public List<string> DangerFunctions = new List<string>() { "Getformfromfile", "fromfile", "getformfromfile" };
+        public List<string> DangerFunctions = new List<string>() { "Getformfromfile", "fromfile", "getformfromfile", "Isplugininstalled" };
         public void Init()
         {
             FuncNameCheck = new FuncRule();
 
             //Safe
-            FuncNameCheck.Add(new FunctionCheck("NotifyPlayer", 0, true, ApiType.FrameworkApi, -1, "DD Api"));
-            FuncNameCheck.Add(new FunctionCheck("NotifyNPC", 0, true, ApiType.FrameworkApi, -1, "DD Api"));
+            FuncNameCheck.Add(new FunctionCheck("NotifyPlayer", 0, true, ApiType.FrameworkApi, 1, "DD Api"));
+            FuncNameCheck.Add(new FunctionCheck("NotifyNPC", 0, true, ApiType.FrameworkApi, 1, "DD Api"));
 
+            FuncNameCheck.Add(new FunctionCheck("AddMenuOption", 1, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddMenuOptionST", 1, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
 
-            FuncNameCheck.Add(new FunctionCheck("AddSliderOption", 0, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
-            FuncNameCheck.Add(new FunctionCheck("AddSliderOptionST", 1, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddSliderOption", 1, true, ApiType.FrameworkApi, 5, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddSliderOptionST", 1, true, ApiType.FrameworkApi, 5, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddSliderOptionST", 3, true, ApiType.FrameworkApi, 5, "SkyUI Api"));
 
-            FuncNameCheck.Add(new FunctionCheck("AddTextOption", 0, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
-            FuncNameCheck.Add(new FunctionCheck("AddTextOptionST", 1, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddSliderOption", 1, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddSliderOptionST", 1, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
 
-            FuncNameCheck.Add(new FunctionCheck("AddToggleOption", 0, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
-            FuncNameCheck.Add(new FunctionCheck("AddToggleOptionST", 1, true, ApiType.FrameworkApi, -1, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddTextOption", 1, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddTextOptionST", 1, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
 
+            FuncNameCheck.Add(new FunctionCheck("AddToggleOption", 1, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddToggleOptionST", 1, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
+            FuncNameCheck.Add(new FunctionCheck("AddTextOptionST", 2, true, ApiType.FrameworkApi, 4, "SkyUI Api"));
 
             FuncNameCheck.Add(new FunctionCheck("SetGameSettingString", 1, true, ApiType.UnknownAPI, -1, ""));
             FuncNameCheck.Add(new FunctionCheck("ShowMessage", 0, true, ApiType.FrameworkApi, 1, ""));
-            FuncNameCheck.Add(new FunctionCheck("Setinfotext", 0, true, ApiType.FrameworkApi, 1, ""));
+            FuncNameCheck.Add(new FunctionCheck("ShowMessage", 0, true, ApiType.FrameworkApi, 4, ""));
+            FuncNameCheck.Add(new FunctionCheck("SetInfoText", 0, true, ApiType.FrameworkApi, 1, ""));
+            FuncNameCheck.Add(new FunctionCheck("Logwarning", 0, true, ApiType.FrameworkApi, 1, "Din"));
 
             FuncNameCheck.Add(new FunctionCheck("Trace", 0, true, ApiType.NativeApi, 1, ""));
             FuncNameCheck.Add(new FunctionCheck("Trace", 0, true, ApiType.NativeApi, 2, ""));
             FuncNameCheck.Add(new FunctionCheck("Notification", 0, true, ApiType.NativeApi, 1, ""));
-
 
             //Danger
             FuncNameCheck.Add(new FunctionCheck("DamageActorValue", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
@@ -159,6 +167,7 @@ namespace PexInterface
             FuncNameCheck.Add(new FunctionCheck("SendAnimationEvent", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
             FuncNameCheck.Add(new FunctionCheck("SetInstanceVolume", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
             FuncNameCheck.Add(new FunctionCheck("Create", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
+            FuncNameCheck.Add(new FunctionCheck("RegisterForMenu", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
 
             FuncNameCheck.Add(new FunctionCheck("UnSetFormValue", 0, false, ApiType.NativeApi, -1, "StorageUtil Api", ""));
 
@@ -441,6 +450,8 @@ namespace PexInterface
                 }
             }
 
+            Result.Sort((a, b) => b.Score.CompareTo(a.Score));
+
             return Result;
         }
 
@@ -453,7 +464,7 @@ namespace PexInterface
                 {
                     var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
 
-                    if (FuncStrs[i].Original.Contains("配置导入成功"))
+                    if (FuncStrs[i].Original.Equals(": Updating script to version 2"))
                     {
 
                     }
@@ -476,7 +487,10 @@ namespace PexInterface
                     }
                     else
                     {
-
+                        if (SetFlow.RelatedConditions.Count > 0)
+                        {
+                            FuncStrs[i].Score -= 20;
+                        }
                     }
                 }
             }
@@ -543,6 +557,24 @@ namespace PexInterface
             public string Original = "";
             public string Translated = "";
 
+            public bool IsCanTranslate()
+            {
+                if (this.Score > 0)
+                {
+                    return true;
+                }
+                return false;
+            }
+
+            public bool IsSafe()
+            {
+                if (this.Score >= 9)
+                {
+                    return true;
+                }
+                return false;
+            }
+
             public static string GenUniqueKey(FunctionBlock Func, PexStringExtend StringItem)
             {
                 var GetHead = StringItem.Link.GetHead();
@@ -605,7 +637,7 @@ namespace PexInterface
         {
             public ApiType Type = ApiType.UnknownAPI;
             public string FunctionName = "";
-            public Dictionary<int,ParamCheck> IndexChecks = new Dictionary<int,ParamCheck>();
+            public Dictionary<string,ParamCheck> IndexChecks = new Dictionary<string, ParamCheck>();
 
             public string Note = "";
 
@@ -624,9 +656,9 @@ namespace PexInterface
             }
             public FunctionCheck(string FuncName, int ParamAtIndex, bool IsReward, ApiType Type, int ParamCount, string FuncNote = "", string ParamNote = "")
             {
-                this.FunctionName = FuncName;
+                this.FunctionName = FuncName.ToLower();
                 this.Type = Type;
-                this.IndexChecks.Add(ParamCount, new ParamCheck(ParamAtIndex, IsReward, Note,ParamCount));
+                this.IndexChecks.Add(ParamAtIndex + "_" + ParamCount, new ParamCheck(ParamAtIndex, IsReward, Note,ParamCount));
                 this.Note = FuncNote;
             }
         }
@@ -651,26 +683,28 @@ namespace PexInterface
             }
             public int CheckFuncByName(string FuncName, int ParamAtIndex, int ParamCount)
             {
+                FuncName = FuncName.ToLower();
                 if (Checks.ContainsKey(FuncName))
                 {
                     var GetRule = Checks[FuncName];
 
                     if (GetRule.IndexChecks.Count > 0)
                     {
-                        if (GetRule.IndexChecks.ContainsKey(ParamCount))
+                        var GetKey = ParamAtIndex + "_" + ParamCount;
+                        if (GetRule.IndexChecks.ContainsKey(GetKey))
                         {
-                            if (GetRule.IndexChecks[ParamCount].ParamAtIndex == ParamAtIndex)
+                            if (GetRule.IndexChecks[GetKey].ParamAtIndex == ParamAtIndex)
                             {
                                 int Score = GetRule.CheckScore();
-                                Score = GetRule.IndexChecks[ParamCount].IsReward ? Math.Abs(Score) : -Math.Abs(Score);
+                                Score = GetRule.IndexChecks[GetKey].IsReward ? Math.Abs(Score) : -Math.Abs(Score);
                                 return Score;
                             }
                         }
-                        else
-                        if (GetRule.IndexChecks.ContainsKey(-1))
+
+                        if (GetRule.IndexChecks.ContainsKey("0" + "_" + "-1"))
                         {
                             int Score = GetRule.CheckScore();
-                            Score = GetRule.IndexChecks[0].IsReward ? Math.Abs(Score) : -Math.Abs(Score);
+                            Score = GetRule.IndexChecks["0" + "_" + "-1"].IsReward ? Math.Abs(Score) : -Math.Abs(Score);
                             return Score;
                         }
                     }
