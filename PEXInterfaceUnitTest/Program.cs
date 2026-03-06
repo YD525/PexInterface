@@ -12,7 +12,7 @@ namespace PEXInterfaceUnitTest
         public static PexHeuristicAnalysis LoadPex(string PexPath)
         {
             PexHeuristicAnalysis Analysis = new PexHeuristicAnalysis();
-            Analysis.Core.LoadPex(PexPath).GetPsc(out string Psc, false, CodeGenStyle.CSharp)
+            Analysis.Core.LoadPex(PexPath).GetPsc(out string Psc, true, CodeGenStyle.CSharp)
             .ReadStrings().AnalysisStrings().GetStrings(out List<PexStringItem> Strings);
 
             //for (int i = 0; i < Strings.Count; i++)
@@ -23,12 +23,12 @@ namespace PEXInterfaceUnitTest
             //    }
             //}
 
-            foreach (var GetStr in Strings)
-            {
-                Console.WriteLine(string.Format("Key:{0},Score:{1},Value:{2}", GetStr.UniqueKey, GetStr.Score,GetStr.Original));
-            }
+            //foreach (var GetStr in Strings)
+            //{
+            //    Console.WriteLine(string.Format("Key:{0},Score:{1},Value:{2}", GetStr.UniqueKey, GetStr.Score,GetStr.Original));
+            //}
 
-            //Console.WriteLine(Psc);
+            Console.WriteLine(Psc);
 
             return Analysis;
         }
@@ -87,7 +87,7 @@ namespace PEXInterfaceUnitTest
             }
 
             //LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
-            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestMod\\Simple Mod Item Spawner - ITALIA-144062-1-50-1741524025\\scripts\\SimpleItemSpawnerMCM.pex");
+            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex");
             Console.ReadKey();
            
         }

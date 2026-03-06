@@ -106,15 +106,10 @@ namespace PexInterface
             if (CodeStyle == null)
             {
                 if (Style == CodeGenStyle.Papyrus)
-                {
                     CodeStyle = PapyrusStyle.Instance;
-                }
                 else
-                { 
-                   CodeStyle = CSharpStyle.Instance;
-                }
+                    CodeStyle = CSharpStyle.Instance;
             }
-                
 
             int Length = TrackerRef.Lines.Count;
 
@@ -122,14 +117,13 @@ namespace PexInterface
             Pass2_InferArrayTypes(TrackerRef, ParentCls, Length);
             Pass3_ResolveTypePlaceholders(TrackerRef, ParentCls, Func, TempStrings, Length);
             Pass4_ControlFlow(TrackerRef, TempStrings, CodeStyle);
+            Pass5_DeclareResidualTemps(TrackerRef);
 
             Func.StringFlower = new Dictionary<ushort, StringFlowRecord>();
             foreach (var GetFlow in StringFlowAnalyzer.Analyze(TrackerRef, ParentCls, Func))
             {
                 if (!Func.StringFlower.ContainsKey(GetFlow.StringID))
-                {
-                    Func.StringFlower.Add(GetFlow.StringID,GetFlow);
-                }
+                    Func.StringFlower.Add(GetFlow.StringID, GetFlow);
             }
         }
 
@@ -156,18 +150,18 @@ namespace PexInterface
                 {
                     case "assign": EmitAssign(AsmLine, Head, TrackerRef, i); break;
                     case "callmethod": EmitCallMethod(AsmLine, Head, TrackerRef, i); break;
-                    case "callstatic": EmitCallStatic(AsmLine, Head); break;
+                    case "callstatic": EmitCallStatic(AsmLine, Head, TrackerRef, i); break;
                     case "iadd": EmitIAdd(AsmLine, Head, TrackerRef, i); break;
                     case "isub": EmitISub(AsmLine, Head); break;
                     case "return": EmitReturn(AsmLine, Head); break;
-                    case "not": EmitNot(AsmLine, Head); break;
-                    case "strcat": EmitStrcat(AsmLine, Head); break;
-                    case "cast": EmitCast(AsmLine, Head); break;
-                    case "propget": EmitPropGet(AsmLine, Head); break;
+                    case "not": EmitNot(AsmLine, Head, TrackerRef, i); break;
+                    case "strcat": EmitStrcat(AsmLine, Head, TrackerRef, i); break;
+                    case "cast": EmitCast(AsmLine, Head, TrackerRef, i); break;
+                    case "propget": EmitPropGet(AsmLine, Head, TrackerRef, i); break;
                     case "propset": EmitPropSet(AsmLine, Head); break;
                     case "array_create": EmitArrayCreate(AsmLine, Head); break;
                     case "array_setelement": EmitArraySetElement(AsmLine, Head); break;
-                    case "array_getelement": EmitArrayGetElement(AsmLine, Head); break;
+                    case "array_getelement": EmitArrayGetElement(AsmLine, Head, TrackerRef, i); break;
                     case "array_length": EmitArrayLength(AsmLine, Head); break;
 
                     case "cmp_lt":
@@ -267,6 +261,46 @@ namespace PexInterface
             ControlFlowCodeGen.ApplyControlFlow(TrackerRef, TempStrings, CodeStyle);
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Pass 5 — declare any temp variables that survived inlining
+        // After Pass 4, temps that were consumed are blank. Any that remain
+        // as the LHS of an assignment need a leading "var" declaration.
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static void Pass5_DeclareResidualTemps(DecompileTracker TrackerRef)
+        {
+            // Matches leading whitespace + tempN on the left of an assignment
+            var TempLhsRx = new Regex(@"^(\s*)(temp\d+)\s*=");           // temp 在 LHS
+            var TempRhsRx = new Regex(@"\btemp\d+\b");                    // temp 在 RHS / 任意位置
+            var DeclaredTemps = new HashSet<string>();
+
+            foreach (var AsmLine in TrackerRef.Lines)
+            {
+                if (string.IsNullOrEmpty(AsmLine.PSCCode)) continue;
+
+                string[] Parts = AsmLine.PSCCode.Split('\n');
+                bool Changed = false;
+
+                for (int p = 0; p < Parts.Length; p++)
+                {
+                    var M = TempLhsRx.Match(Parts[p]);
+                    if (!M.Success) continue;
+
+                    string TempName = M.Groups[2].Value;
+                    if (DeclaredTemps.Add(TempName) && !TrackerRef.Variables.IsCreated(TempName))
+                    {
+                        TrackerRef.Variables.Add(
+                            new AsmOffset(0, 0), TempName, 0, null, VariableAccess.None);
+                        Parts[p] = M.Groups[1].Value + "var " + Parts[p].TrimStart();
+                        Changed = true;
+                    }
+                }
+
+                if (Changed)
+                    AsmLine.PSCCode = string.Join("\n", Parts);
+            }
+        }
+
 
         // =========================================================================
         // Opcode emitters — one method per opcode
@@ -287,7 +321,7 @@ namespace PexInterface
 
             string RhsRaw = Head.Next.GetValue();
 
-            // Fold preceding iadd into +=
+            // Fold a preceding iadd into += when the temp flows directly into this assign
             if (RhsRaw.StartsWith("temp"))
             {
                 for (int j = i - 1; j >= 0; j--)
@@ -336,7 +370,50 @@ namespace PexInterface
                 new List<AsmLink> { CallerNode, Head }, VariableAccess.Set);
         }
 
-        private static void EmitCallStatic(AsmCode AsmLine, AsmLink Head)
+        private static bool IsTempNeverRead(
+   DecompileTracker TrackerRef,
+   int FromLine,
+   string TempName,
+   int Length)
+        {
+            if (string.IsNullOrEmpty(TempName) || !TempName.StartsWith("temp"))
+                return false;
+
+            for (int k = FromLine + 1; k < Length; k++)
+            {
+                var ScanLine = TrackerRef.Lines[k];
+                if (ScanLine == null) continue;
+
+                // Check every argument link for a read of TempName
+                var Node = ScanLine.Links?.GetHead();
+                int ArgPos = 0;
+                while (Node != null)
+                {
+                    // For callmethod/callstatic the return slot is arg index 2 — that's a write, not a read
+                    bool IsReturnSlot = (ScanLine.OPCode?.Value == "callmethod" && ArgPos == 2)
+                                     || (ScanLine.OPCode?.Value == "callstatic" && ArgPos == 2);
+                    // For assign/not/cast/etc. arg index 0 is the destination — write, not a read
+                    bool IsDestSlot = ArgPos == 0 && ScanLine.OPCode?.Value != "callmethod"
+                                                  && ScanLine.OPCode?.Value != "callstatic";
+
+                    if (!IsReturnSlot && !IsDestSlot && Node.GetValue() == TempName)
+                        return false; // It is read here
+
+                    Node = Node.Next;
+                    ArgPos++;
+                }
+
+                // If this line overwrites TempName as destination, stop — it's redefined, original never read
+                var Head = ScanLine.Links?.GetHead();
+                if (Head != null && Head.GetValue() == TempName)
+                    break;
+            }
+
+            return true; // Never read after FromLine
+        }
+
+        private static void EmitCallStatic(AsmCode AsmLine, AsmLink Head,
+     DecompileTracker TrackerRef, int i)
         {
             string ClassName = PapyrusAsmDecoder.CapitalizeFirst(Head.GetValue());
             var FuncNode = Head.Next;
@@ -347,9 +424,17 @@ namespace PexInterface
             var ParamsList = BuildParamList(RetNode?.Next?.Next);
             string CallExpr = string.Format("{0}.{1}({2})", ClassName, FuncName, string.Join(", ", ParamsList));
 
-            AsmLine.PSCCode = (RetNode == null || RetNode.IsNull())
+            // Suppress the assignment if the return value is never actually used
+            bool DiscardReturn = RetNode == null
+                              || RetNode.IsNull()
+                              || IsTempNeverRead(TrackerRef, i, ReturnVar, TrackerRef.Lines.Count);
+
+            AsmLine.PSCCode = DiscardReturn
                 ? CallExpr + ";"
                 : string.Format("{0} = {1};", ReturnVar, CallExpr);
+
+            if (!DiscardReturn && !string.IsNullOrEmpty(ReturnVar))
+                TrackerRef.Variables.Add(new AsmOffset(i, 2), ReturnVar, 0, null, VariableAccess.Set);
         }
 
         private static void EmitIAdd(AsmCode AsmLine, AsmLink Head,
@@ -390,34 +475,51 @@ namespace PexInterface
                 : string.Format("Return {0};", Head.GetValue());
         }
 
-        private static void EmitNot(AsmCode AsmLine, AsmLink Head)
+        private static void EmitNot(AsmCode AsmLine, AsmLink Head,
+            DecompileTracker TrackerRef, int i)
         {
             string RetVar = Head.GetValue();
             string Operand = Head.Next?.GetValue() ?? "?";
             AsmLine.PSCCode = string.Format("{0} = !{1};", RetVar, Operand);
+
+            // Register so that a subsequent assign to the same variable is not re-declared
+            if (!TrackerRef.Variables.IsCreated(RetVar))
+                TrackerRef.Variables.Add(new AsmOffset(i, 0), RetVar, 0, null, VariableAccess.Set);
         }
 
-        private static void EmitStrcat(AsmCode AsmLine, AsmLink Head)
+        private static void EmitStrcat(AsmCode AsmLine, AsmLink Head,
+            DecompileTracker TrackerRef, int i)
         {
             string Dest = Head.GetValue();
             string Left = Head.Next?.GetValue() ?? "?";
             string Right = Head.Next?.Next?.GetValue() ?? "?";
             AsmLine.PSCCode = string.Format("{0} = {1} + {2};", Dest, Left, Right);
+
+            if (!TrackerRef.Variables.IsCreated(Dest))
+                TrackerRef.Variables.Add(new AsmOffset(i, 0), Dest, 0, null, VariableAccess.Set);
         }
 
-        private static void EmitCast(AsmCode AsmLine, AsmLink Head)
+        private static void EmitCast(AsmCode AsmLine, AsmLink Head,
+            DecompileTracker TrackerRef, int i)
         {
             string Dest = Head.GetValue();
             string Src = Head.Next?.GetValue() ?? "?";
             AsmLine.PSCCode = string.Format("{0} = {1};", Dest, Src);
+
+            if (!TrackerRef.Variables.IsCreated(Dest))
+                TrackerRef.Variables.Add(new AsmOffset(i, 0), Dest, 0, null, VariableAccess.Set);
         }
 
-        private static void EmitPropGet(AsmCode AsmLine, AsmLink Head)
+        private static void EmitPropGet(AsmCode AsmLine, AsmLink Head,
+            DecompileTracker TrackerRef, int i)
         {
             string PropName = Head.GetValue();
             string Obj = NormalizeObj(Head.Next?.GetValue() ?? "Self");
             string Dest = Head.Next?.Next?.GetValue() ?? "?";
             AsmLine.PSCCode = string.Format("{0} = {1}.{2};", Dest, Obj, PropName);
+
+            if (!TrackerRef.Variables.IsCreated(Dest))
+                TrackerRef.Variables.Add(new AsmOffset(i, 0), Dest, 0, null, VariableAccess.Set);
         }
 
         private static void EmitPropSet(AsmCode AsmLine, AsmLink Head)
@@ -443,12 +545,16 @@ namespace PexInterface
             AsmLine.PSCCode = string.Format("{0}[{1}] = {2};", Arr, Index, Value);
         }
 
-        private static void EmitArrayGetElement(AsmCode AsmLine, AsmLink Head)
+        private static void EmitArrayGetElement(AsmCode AsmLine, AsmLink Head,
+            DecompileTracker TrackerRef, int i)
         {
             string Dest = Head.GetValue();
             string Array = Head.Next?.GetValue() ?? "?";
             string Index = Head.Next?.Next?.GetValue() ?? "?";
             AsmLine.PSCCode = string.Format("{0} = {1}[{2}];", Dest, Array, Index);
+
+            if (!TrackerRef.Variables.IsCreated(Dest))
+                TrackerRef.Variables.Add(new AsmOffset(i, 0), Dest, 0, null, VariableAccess.Set);
         }
 
         private static void EmitArrayLength(AsmCode AsmLine, AsmLink Head)
@@ -501,7 +607,7 @@ namespace PexInterface
         {
             if (Value.StartsWith("\"") || Value.StartsWith("$")) return "String";
             if (int.TryParse(Value, out _)) return "Int";
-            if (float.TryParse(Value,NumberStyles.Float,CultureInfo.InvariantCulture, out _)) return "Float";
+            if (float.TryParse(Value, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) return "Float";
             if (Value.ToLower() == "true" || Value.ToLower() == "false") return "Bool";
             return "var";
         }
@@ -515,14 +621,13 @@ namespace PexInterface
             string Rhs,
             PscCls ParentCls,
             FunctionBlock Func,
-            List<PexString> tempStrings)
+            List<PexString> TempStrings)
         {
             // Direct literal checks
             if (Rhs.StartsWith("\"") || Rhs.StartsWith("$")) return "String";
             if (Rhs == "True" || Rhs == "False") return "Bool";
             if (int.TryParse(Rhs, out _)) return "Int";
-            if (float.TryParse(Rhs, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out _)) return "Float";
+            if (float.TryParse(Rhs, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) return "Float";
             if (Rhs == "None") return "";
 
             // Non-temp: look up in class variables / function params
@@ -557,10 +662,10 @@ namespace PexInterface
 
                 if (LineOP == "callstatic")
                 {
-                    var funcNode = LineHead.Next;
-                    var RetNode = funcNode?.Next;
+                    var FuncNode = LineHead.Next;
+                    var RetNode = FuncNode?.Next;
                     if (RetNode == null || RetNode.GetValue() != Rhs) continue;
-                    string CalledFunc = funcNode?.GetValue() ?? "";
+                    string CalledFunc = FuncNode?.GetValue() ?? "";
                     foreach (var Function in ParentCls.Functions)
                         if (Function.FunctionName == CalledFunc && Function.ReturnType.Length > 0) return Function.ReturnType;
                     return "var";
@@ -569,20 +674,20 @@ namespace PexInterface
                 if (LineOP == "cast")
                 {
                     if (LineHead.GetValue() != Rhs) continue;
-                    return InferTypeFromRhs(Tracker, j, LineHead.Next?.GetValue() ?? "", ParentCls, Func, tempStrings);
+                    return InferTypeFromRhs(Tracker, j, LineHead.Next?.GetValue() ?? "", ParentCls, Func, TempStrings);
                 }
 
                 if (LineOP == "propget")
                 {
                     var DestNode = LineHead.Next?.Next;
                     if (DestNode == null || DestNode.GetValue() != Rhs) continue;
-                    return "var"; // property type not available without an external type registry
+                    return "var"; // Property type not available without an external type registry
                 }
 
                 if (LineOP == "assign")
                 {
                     if (LineHead.GetValue() != Rhs) continue;
-                    return InferTypeFromRhs(Tracker, j, LineHead.Next?.GetValue() ?? "", ParentCls, Func, tempStrings);
+                    return InferTypeFromRhs(Tracker, j, LineHead.Next?.GetValue() ?? "", ParentCls, Func, TempStrings);
                 }
             }
 
@@ -752,7 +857,7 @@ namespace PexInterface
             int JMPFLine = CmpLine + 1;
             int FalseTarget = AbsTarget(Lines, JMPFLine);
 
-            // While: a back-jump inside the body targets <= cmpLine
+            // While: a back-jump inside the body targets <= CmpLine
             if (TryDetectWhile(CFA, Lines, Length, Handled, CmpLine, JMPFLine, FalseTarget, BuildCondition))
                 return CmpLine + 1;
 
@@ -805,7 +910,7 @@ namespace PexInterface
             string Condition = (OPCode == "jmpt") ? ("!" + CondVar) : CondVar;
             int FalseTarget = AbsTarget(Lines, JMPLine);
 
-            // While detection
+            // While detection: look for a back-jump inside the body
             int WhileJmpLine = -1;
             for (int k = JMPLine + 1; k < FalseTarget && k < Length; k++)
             {
@@ -823,7 +928,7 @@ namespace PexInterface
             }
 
             // If [/ Else] — only emit Else when the instruction immediately before
-            // falseTarget is a jmp whose target is strictly past falseTarget.
+            // FalseTarget is a jmp whose target is strictly past FalseTarget.
             // This prevents inner or unrelated jmps from being mistaken as else exits.
             CFA.AddEvent(JMPLine, new CfEvent(CfEventKind.IfBegin, Condition));
             Handled[JMPLine] = true;
@@ -861,14 +966,14 @@ namespace PexInterface
             bool[] Handled,
             int CMPLine,
             int JMPFLine,
-            int falseTarget,
-            Func<int, string> buildCondition)
+            int FalseTarget,
+            Func<int, string> BuildCondition)
         {
-            for (int k = JMPFLine + 1; k < falseTarget && k < Length; k++)
+            for (int k = JMPFLine + 1; k < FalseTarget && k < Length; k++)
             {
                 if (Lines[k].OPCode?.Value == "jmp" && AbsTarget(Lines, k) <= CMPLine)
                 {
-                    CFA.AddEvent(CMPLine, new CfEvent(CfEventKind.WhileBegin, buildCondition(CMPLine)));
+                    CFA.AddEvent(CMPLine, new CfEvent(CfEventKind.WhileBegin, BuildCondition(CMPLine)));
                     CFA.AddEvent(k, new CfEvent(CfEventKind.EndWhile));
                     Handled[CMPLine] = true;
                     Handled[JMPFLine] = true;
@@ -881,30 +986,30 @@ namespace PexInterface
 
         /// <summary>
         /// Emits EndIf (and optionally ElseBegin) for a simple single-segment if.
-        /// Only treats the instruction at falseTarget-1 as an else-exit jmp when its
-        /// target is strictly past falseTarget (i.e. it skips an else block).
+        /// Only treats the instruction at FalseTarget-1 as an else-exit jmp when its
+        /// target is strictly past FalseTarget (i.e. it skips an else block).
         /// </summary>
         private static void EmitSimpleIfEnd(
-            ControlFlowAnalyzer cfa,
-            List<AsmCode> lines,
-            int n,
-            bool[] handled,
-            int falseTarget)
+            ControlFlowAnalyzer CFA,
+            List<AsmCode> Lines,
+            int Length,
+            bool[] Handled,
+            int FalseTarget)
         {
-            int prevFalse = falseTarget - 1;
-            if (prevFalse >= 0 && prevFalse < n
-                && lines[prevFalse].OPCode?.Value == "jmp"
-                && AbsTarget(lines, prevFalse) > falseTarget)
+            int PrevFalse = FalseTarget - 1;
+            if (PrevFalse >= 0 && PrevFalse < Length
+                && Lines[PrevFalse].OPCode?.Value == "jmp"
+                && AbsTarget(Lines, PrevFalse) > FalseTarget)
             {
-                int elseEnd = Math.Min(AbsTarget(lines, prevFalse) - 1, n - 1);
-                cfa.AddEvent(falseTarget, new CfEvent(CfEventKind.ElseBegin));
-                cfa.AddEvent(elseEnd, new CfEvent(CfEventKind.EndIf));
-                handled[prevFalse] = true;
+                int ElseEnd = Math.Min(AbsTarget(Lines, PrevFalse) - 1, Length - 1);
+                CFA.AddEvent(FalseTarget, new CfEvent(CfEventKind.ElseBegin));
+                CFA.AddEvent(ElseEnd, new CfEvent(CfEventKind.EndIf));
+                Handled[PrevFalse] = true;
             }
             else
             {
-                int endIfLine = Math.Max(0, Math.Min(falseTarget - 1, n - 1));
-                cfa.AddEvent(endIfLine, new CfEvent(CfEventKind.EndIf));
+                int EndIfLine = Math.Max(0, Math.Min(FalseTarget - 1, Length - 1));
+                CFA.AddEvent(EndIfLine, new CfEvent(CfEventKind.EndIf));
             }
         }
 
@@ -913,35 +1018,35 @@ namespace PexInterface
         /// and marks all inner exit-jumps as handled.
         /// </summary>
         private static int ResolveChainEnd(
-            ControlFlowAnalyzer cfa,
-            List<AsmCode> lines,
-            int n,
-            bool[] handled,
-            List<IfSeg> chain)
+            ControlFlowAnalyzer CFA,
+            List<AsmCode> Lines,
+            int Length,
+            bool[] Handled,
+            List<IfSeg> Chain)
         {
-            int commonEnd = -1;
+            int CommonEnd = -1;
 
-            int pf0 = chain[0].FalseTarget - 1;
-            if (pf0 >= 0 && pf0 < n && lines[pf0].OPCode?.Value == "jmp")
+            int PF0 = Chain[0].FalseTarget - 1;
+            if (PF0 >= 0 && PF0 < Length && Lines[PF0].OPCode?.Value == "jmp")
             {
-                commonEnd = AbsTarget(lines, pf0) - 1;
-                handled[pf0] = true;
+                CommonEnd = AbsTarget(Lines, PF0) - 1;
+                Handled[PF0] = true;
             }
 
-            for (int ci = 1; ci < chain.Count; ci++)
+            for (int ci = 1; ci < Chain.Count; ci++)
             {
-                int pfN = chain[ci].FalseTarget - 1;
-                if (pfN >= 0 && pfN < n && lines[pfN].OPCode?.Value == "jmp")
+                int PFN = Chain[ci].FalseTarget - 1;
+                if (PFN >= 0 && PFN < Length && Lines[PFN].OPCode?.Value == "jmp")
                 {
-                    handled[pfN] = true;
-                    if (commonEnd < 0) commonEnd = AbsTarget(lines, pfN) - 1;
+                    Handled[PFN] = true;
+                    if (CommonEnd < 0) CommonEnd = AbsTarget(Lines, PFN) - 1;
                 }
             }
 
-            if (commonEnd < 0)
-                commonEnd = chain[chain.Count - 1].FalseTarget - 1;
+            if (CommonEnd < 0)
+                CommonEnd = Chain[Chain.Count - 1].FalseTarget - 1;
 
-            return Math.Max(0, Math.Min(commonEnd, n - 1));
+            return Math.Max(0, Math.Min(CommonEnd, Length - 1));
         }
     }
 
@@ -956,9 +1061,9 @@ namespace PexInterface
         // Condition builder
         // ─────────────────────────────────────────────────────────────────────
 
-        private static string CmpOp(string op)
+        private static string CmpOp(string Op)
         {
-            switch (op)
+            switch (Op)
             {
                 case "cmp_lt": return "<";
                 case "cmp_le": return "<=";
@@ -1010,7 +1115,7 @@ namespace PexInterface
                             var RetNode = CallerNode?.Next;
                             if (RetNode == null || RetNode.GetValue() != Name) continue;
 
-                            Line.PSCCode = ""; // consumed
+                            Line.PSCCode = ""; // Consumed — suppress standalone emit
 
                             string FuncName = LineHead.GetValue();
                             string CallerRaw = CallerNode?.GetValue() ?? "Self";
@@ -1031,7 +1136,7 @@ namespace PexInterface
                             var RetNode = FuncNode?.Next;
                             if (RetNode == null || RetNode.GetValue() != Name) continue;
 
-                            Line.PSCCode = ""; // consumed
+                            Line.PSCCode = ""; // Consumed — suppress standalone emit
 
                             string ClassName = PapyrusAsmDecoder.CapitalizeFirst(LineHead.GetValue());
                             string FuncName = FuncNode?.GetValue() ?? "?";
@@ -1044,7 +1149,7 @@ namespace PexInterface
                         {
                             var LineHead = Line.Links.GetHead();
                             if (LineHead.GetValue() != Name) continue;
-                            Line.PSCCode = ""; // consumed
+                            Line.PSCCode = ""; // Consumed
 
                             string Left = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
                             string Right = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
@@ -1055,7 +1160,7 @@ namespace PexInterface
                         {
                             var LineHead = Line.Links.GetHead();
                             if (LineHead.GetValue() != Name) continue;
-                            Line.PSCCode = ""; // consumed
+                            Line.PSCCode = ""; // Consumed
                             return ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
                         }
 
@@ -1065,7 +1170,7 @@ namespace PexInterface
                             var ObjNode = LineHead.Next;
                             var DestNode = ObjNode?.Next;
                             if (DestNode == null || DestNode.GetValue() != Name) continue;
-                            Line.PSCCode = ""; // consumed
+                            Line.PSCCode = ""; // Consumed
 
                             string PropName = LineHead.GetValue();
                             string Obj = (ObjNode?.GetValue() ?? "Self").ToLower() == "self"
@@ -1077,7 +1182,7 @@ namespace PexInterface
                         {
                             var LineHead = Line.Links.GetHead();
                             if (LineHead.GetValue() != Name) continue;
-                            Line.PSCCode = ""; // consumed
+                            Line.PSCCode = ""; // Consumed
 
                             string Array = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
                             string Index = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
@@ -1090,11 +1195,21 @@ namespace PexInterface
                             if (LineHead.GetValue() != Name) continue;
                             return ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
                         }
+                    case "not":
+                        {
+                            var LineHead = Line.Links.GetHead();
+                            if (LineHead.GetValue() != Name) continue;
+                            Line.PSCCode = ""; // Consumed
+                            string Operand = LineHead.Next?.GetValue() ?? "?";
+                            return string.Format("!{0}", Operand);
+                        }
                 }
             }
 
             return Name;
         }
+
+       
 
         private static List<string> BuildResolvedParams(
             DecompileTracker Tracker,
@@ -1160,7 +1275,7 @@ namespace PexInterface
                             case CfEventKind.EndWhile:
                                 Depth = Math.Max(0, Depth - 1);
                                 NStringBuilder.AppendLine(Style.Indent(Depth) + Style.EndWhile());
-                                AsmLine.PSCCode = ""; // back-jump jmp emits nothing
+                                AsmLine.PSCCode = ""; // Back-jump jmp emits nothing
                                 break;
 
                             case CfEventKind.ElseBegin:

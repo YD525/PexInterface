@@ -200,6 +200,17 @@ namespace PexInterface
         /// <summary>StringID of the AsmLink node that carries the literal value.</summary>
         public ushort StringID = 0;
 
+
+        public string ArrayTarget = null;
+
+
+        public string ArrayName = null;
+
+
+        public int ArrayIndex = -1;
+
+        public string FinalTarget => ArrayTarget ?? FinalVariable;
+
         public override string ToString()
         {
             var sb = new StringBuilder();
@@ -546,6 +557,34 @@ namespace PexInterface
                             LineIndex = i
                         };
                         break;
+                    }
+                }
+
+                else if (op == "array_setelement")
+                {
+                    var arrayNode = head;           // array variable
+                    var indexNode = head.Next;      // index (integer literal or var)
+                    var valueNode = indexNode?.Next; // value being stored
+
+                    if (valueNode != null && valueNode.GetValue() == currentVar)
+                    {
+                        string arrayName = CapValue(arrayNode.GetValue());
+                        string indexRaw = indexNode?.GetValue() ?? "?";
+
+                        // 解析下标为整数（字面量如 "0","1","2"）
+                        int arrayIdx = -1;
+                        int.TryParse(indexRaw, out arrayIdx);
+
+                        string arrayTarget = string.Format("{0}[{1}]", arrayName, indexRaw);
+
+                        record.ArrayName = arrayName;
+                        record.ArrayIndex = arrayIdx;
+                        record.ArrayTarget = arrayTarget;
+
+                        if (!record.AssignmentChain.Contains(arrayTarget))
+                            record.AssignmentChain.Add(arrayTarget);
+
+                        break; 
                     }
                 }
 

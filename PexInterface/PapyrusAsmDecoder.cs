@@ -41,7 +41,7 @@ public class PapyrusAsmDecoder
         return Number;
     }
 
-    public static string Version = "1.0.3 Beta";
+    public static string Version = "1.0.5 Beta";
 
     public PexReader Reader = null;
 
@@ -579,8 +579,6 @@ public class AsmLink
 
         if (Type == AsmValueType.Null)
         {
-            SetValue = SetValue.ToLower();
-
             if (SetValue.EndsWith("_var"))
             {
                 SetValue = SetValue.Substring(0, SetValue.Length - "_var".Length);

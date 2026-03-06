@@ -130,7 +130,7 @@ namespace PexInterface
             return Space;
         }
 
-        public List<string> DangerFunctions = new List<string>() { "Getformfromfile", "fromfile", "getformfromfile", "Isplugininstalled" };
+        public List<string> DangerFunctions = new List<string>() { "GetFormFromFile".ToLower(), "FromFile".ToLower(), "IsPluginInstalled".ToLower() };
         public void Init()
         {
             FuncNameCheck = new FuncRule();
@@ -470,7 +470,6 @@ namespace PexInterface
                 Dictionary<string,int> FuncNames = new Dictionary<string, int>();
                 for (int i = 0; i < FuncStrs.Count; i++)
                 {
-                    
                     var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
 
                     var FuncIndex = 0;
@@ -499,7 +498,7 @@ namespace PexInterface
                         FuncStrs[i].Score = -100;
                     }
                     else
-                    if (DangerFunctions.Contains(SetFlow.ConsumedByMethodName))
+                    if (DangerFunctions.Contains(SetFlow.ConsumedByMethodName?.ToLower()))
                     {
                         FuncStrs[i].Score = -100;
                     }
@@ -516,7 +515,7 @@ namespace PexInterface
                         }
                     }
 
-                    FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(FuncIndex+"_"+ IFIndex, FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
+                    FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(FuncIndex+"_"+ IFIndex + SetFlow.ArrayTarget, FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
                 }
             }
         }
