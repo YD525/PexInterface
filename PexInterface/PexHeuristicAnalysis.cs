@@ -366,6 +366,7 @@ namespace PexInterface
             {
                 foreach (var GetString in Function.Strings)
                 {
+                    if(GetString.Value.Length>0)
                     this.Strings.Add(new PexStringItem(Function,GetString));
                 }
             }

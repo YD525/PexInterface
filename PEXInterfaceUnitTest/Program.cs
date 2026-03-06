@@ -25,7 +25,7 @@ namespace PEXInterfaceUnitTest
         {
             //_wetquestscript.pex
             //LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
-            LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\rdo_mcmconfig.pex");
+            LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
             Console.ReadKey();
             foreach (var Get in Reader.StringTable)
             {
