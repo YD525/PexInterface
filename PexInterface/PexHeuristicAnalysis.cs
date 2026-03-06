@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
-using static System.Net.Mime.MediaTypeNames;
 using static PexInterface.PexHeuristicAnalysis;
 using static PexInterface.PexReader;
 
@@ -469,11 +467,32 @@ namespace PexInterface
             foreach (var GetKey in this.Strings.Keys)
             {
                 var FuncStrs = this.Strings[GetKey];
+                Dictionary<string,int> FuncNames = new Dictionary<string, int>();
                 for (int i = 0; i < FuncStrs.Count; i++)
                 {
+                    
                     var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
 
+                    var FuncIndex = 0;
+                    var IFIndex = 0;
+
                     FuncStrs[i].Score = -1;
+
+                    if (SetFlow.ConsumedByMethodName?.Length > 0)
+                    {
+                        string SetKey = SetFlow.ConsumedByCallerName + "_" + SetFlow.ConsumedByMethodName;
+                        if (FuncNames.ContainsKey(SetKey))
+                        {
+                            FuncNames[SetKey]++;
+                            FuncIndex = FuncNames[SetKey];
+                        }
+                        else
+                        {
+                            FuncNames.Add(SetKey, 0);
+                        }
+                    }
+
+                    IFIndex = SetFlow.RelatedConditions.Count + SetFlow.LocalVariablesInvolved.Count + SetFlow.GlobalVariablesInvolved.Count;
 
                     if (FuncStrs[i].Original.StartsWith("$"))
                     {
@@ -497,7 +516,7 @@ namespace PexInterface
                         }
                     }
 
-                    FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(SetFlow.SourceLineIndex, FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
+                    FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(FuncIndex+"_"+ IFIndex, FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
                 }
             }
         }
@@ -515,10 +534,13 @@ namespace PexInterface
                 int ModifyCount = 0;
                 for (int i = 0; i < LocalStrings.Count; i++)
                 {
-                    if (LocalStrings[i].Translated.Length > 0)
+                    if (LocalStrings[i].IsCanTranslate())
                     {
-                        Core.Reader.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
-                        ModifyCount++;
+                        if (LocalStrings[i].Translated.Length > 0)
+                        {
+                            Core.Reader.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
+                            ModifyCount++;
+                        }
                     }
                 }
                 if (ModifyCount > 0)
@@ -582,7 +604,7 @@ namespace PexInterface
                 return false;
             }
 
-            public static string GenUniqueKey(int LineIndex,int Score, FunctionBlock Func, PexStringExtend StringItem)
+            public static string GenUniqueKey(string Sign,int Score, FunctionBlock Func, PexStringExtend StringItem)
             {
                 var GetHead = StringItem.Link.GetHead();
                 var GetPrev = StringItem.Link.Prev;
@@ -599,7 +621,7 @@ namespace PexInterface
 
                 //AutoMerge += "_" + StringItem.Index;
 
-                string SetKey = Crc32Helper.ComputeCrc32(Score + "_" + LineIndex + "_" + Func.FunctionName + "_" + AutoMerge);
+                string SetKey = Crc32Helper.ComputeCrc32(Score + "_" + Sign + "_" + Func.FunctionName + "_" + AutoMerge);
                 return SetKey;
             }
 
