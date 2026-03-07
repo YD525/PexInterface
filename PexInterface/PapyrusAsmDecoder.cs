@@ -618,7 +618,8 @@ public class AsmLink
     }
     public void Remove()
     {
-        var Head = GetHead();
+        if (Prev == null && Next == null && Head == null && Tail == null)
+            return;
 
         if (Prev != null)
             Prev.Next = Next;
@@ -626,31 +627,26 @@ public class AsmLink
         if (Next != null)
             Next.Prev = Prev;
 
-        if (this == Head)
-        {
-            if (Next != null)
-            {
-                Next.Tail = this.Tail;
-                Next.Head = null;        
+        if (Head != null && this == Head.Tail)
+            Head.Tail = Prev;
 
-                var Node = Next.Next; 
-                while (Node != null)
-                {
-                    Node.Head = Next;
-                    Node = Node.Next;
-                }
+        if (Head == null && Next != null)
+        {
+            Next.Head = null;
+            Next.Tail = Tail;
+
+            var Node = Next.Next;
+            while (Node != null)
+            {
+                Node.Head = Next;
+                Node = Node.Next;
             }
         }
-        else
-        if (this == Head.Tail)
-        {
-            Head.Tail = Prev;
-        }
 
+        Prev = null;
+        Next = null;
         Head = null;
         Tail = null;
-        Next = null;
-        Prev = null;
     }
     public bool IsTemp()
     {
