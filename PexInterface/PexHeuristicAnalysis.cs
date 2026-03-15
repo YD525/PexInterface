@@ -351,11 +351,11 @@ namespace PexInterface
                         else
                         if (GetFunc.IsNative)
                         {
-                            GenLine = string.Format(GenSpace(1) + "public static {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
+                            GenLine = string.Format(GenSpace(1) + "public {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
                         }
                         else
                         {
-                            GenLine = string.Format(GenSpace(1) + "private static {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
+                            GenLine = string.Format(GenSpace(1) + "private {0} {1}({2})\n", TempReturnType, GetFunc.FunctionName, GenParams) + GenSpace(1) + "{";
                         }
                     }
                     
