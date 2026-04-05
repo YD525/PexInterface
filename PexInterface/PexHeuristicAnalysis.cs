@@ -167,8 +167,14 @@ namespace PexInterface
             FuncNameCheck.Add(new FunctionCheck("Notification", 0, true, ApiType.NativeApi, 1, ""));
 
             FuncNameCheck.Add(new FunctionCheck("NotifyActor", 0, true, ApiType.FrameworkApi, 3, "DD"));
+            FuncNameCheck.Add(new FunctionCheck("NotifyPlayer", 0, true, ApiType.FrameworkApi, 2, "DD"));
             FuncNameCheck.Add(new FunctionCheck("Warn", 0, true, ApiType.FrameworkApi, 1, "DD"));
             FuncNameCheck.Add(new FunctionCheck("Log", 0, true, ApiType.FrameworkApi, 2, "DD"));
+
+
+            FuncNameCheck.Add(new FunctionCheck("notify", 0, true, ApiType.FrameworkApi, 1, "DD"));
+            FuncNameCheck.Add(new FunctionCheck("notify", 0, true, ApiType.FrameworkApi, 2, "DD"));
+
 
 
             FuncNameCheck.Add(new FunctionCheck("MessageBox", 0, true, ApiType.FrameworkApi, 1, ""));
