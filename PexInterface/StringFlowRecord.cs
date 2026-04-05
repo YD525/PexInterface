@@ -197,6 +197,8 @@ namespace PexInterface
         /// <summary>Non-temp, non-global local variables in the chain.</summary>
         public List<string> LocalVariablesInvolved = new List<string>();
 
+        public List<string> ExtraLiterals = new List<string>();
+
         /// <summary>StringID of the AsmLink node that carries the literal value.</summary>
         public ushort StringID = 0;
 
@@ -406,13 +408,13 @@ namespace PexInterface
         // ─────────────────────────────────────────────────────────────────────
 
         private static void ForwardTrace(
-            DecompileTracker tracker,
-            int fromLine,
-            int n,
-            string currentVar,
-            StringFlowRecord record,
-            PscCls parentCls,
-            FunctionBlock func)
+     DecompileTracker tracker,
+     int fromLine,
+     int n,
+     string currentVar,
+     StringFlowRecord record,
+     PscCls parentCls,
+     FunctionBlock func)
         {
             var lines = tracker.Lines;
             const int MaxDepth = 64;
@@ -427,8 +429,8 @@ namespace PexInterface
                 string op = line.OPCode?.Value ?? "";
                 var head = line.Links.GetHead();
 
-                // ── assign / cast / strcat ───────────────────────────────────
-                if (op == "assign" || op == "cast" || op == "strcat")
+                // ── assign / cast ────────────────────────────────────────────────
+                if (op == "assign" || op == "cast")
                 {
                     if (head.GetValue() == currentVar)
                         break; // overwritten — stop tracing
@@ -443,7 +445,29 @@ namespace PexInterface
                     }
                 }
 
-                // ── callmethod ───────────────────────────────────────────────
+                // ── strcat ───────────────────────────────────────────────────────
+                // strcat dest left right
+                // currentVar may appear as left OR right operand of a concat.
+                // The result (dest) becomes the new currentVar to trace.
+                else if (op == "strcat")
+                {
+                    string left = head.Next?.GetValue();
+                    string right = head.Next?.Next?.GetValue();
+
+                    if (left == currentVar || right == currentVar)
+                    {
+                        string newDest = head.GetValue();
+
+                        record.AssignmentChain.Add(newDest);
+                        currentVar = newDest;
+
+                        // ⭐ 新增逻辑：把另一个 operand 也纳入“同源”
+                        if (left != currentVar) TrackExtraOperand(left, record);
+                        if (right != currentVar) TrackExtraOperand(right, record);
+                    }
+                }
+
+                // ── callmethod ───────────────────────────────────────────────────
                 else if (op == "callmethod")
                 {
                     string funcName = Cap(head.GetValue());
@@ -453,7 +477,7 @@ namespace PexInterface
 
                     int argIdx = NodeListIndexOf(firstArgNode, currentVar);
                     bool isCallerItself = callerNode != null
-                                         && callerNode.GetValue() == currentVar;
+                                          && callerNode.GetValue() == currentVar;
 
                     if (argIdx >= 0 || isCallerItself)
                     {
@@ -494,7 +518,7 @@ namespace PexInterface
                     }
                 }
 
-                // ── callstatic ───────────────────────────────────────────────
+                // ── callstatic ───────────────────────────────────────────────────
                 else if (op == "callstatic")
                 {
                     var funcNode = head.Next;
@@ -531,7 +555,7 @@ namespace PexInterface
                     }
                 }
 
-                // ── propset: [propName][obj][value] ─────────────────────────
+                // ── propset: [propName][obj][value] ──────────────────────────────
                 else if (op == "propset")
                 {
                     var objNode = head.Next;
@@ -544,7 +568,6 @@ namespace PexInterface
 
                         record.CallInfo = new FunctionCallInfo
                         {
-                            // propset is expressed as  Obj.Prop = Value
                             CallExpression = string.Format("{0}.{1} = {2}",
                                                  obj, propName,
                                                  CapValue(currentVar)),
@@ -560,18 +583,18 @@ namespace PexInterface
                     }
                 }
 
+                // ── array_setelement ─────────────────────────────────────────────
                 else if (op == "array_setelement")
                 {
-                    var arrayNode = head;           // array variable
-                    var indexNode = head.Next;      // index (integer literal or var)
-                    var valueNode = indexNode?.Next; // value being stored
+                    var arrayNode = head;
+                    var indexNode = head.Next;
+                    var valueNode = indexNode?.Next;
 
                     if (valueNode != null && valueNode.GetValue() == currentVar)
                     {
                         string arrayName = CapValue(arrayNode.GetValue());
                         string indexRaw = indexNode?.GetValue() ?? "?";
 
-                        // 解析下标为整数（字面量如 "0","1","2"）
                         int arrayIdx = -1;
                         int.TryParse(indexRaw, out arrayIdx);
 
@@ -584,7 +607,7 @@ namespace PexInterface
                         if (!record.AssignmentChain.Contains(arrayTarget))
                             record.AssignmentChain.Add(arrayTarget);
 
-                        break; 
+                        break;
                     }
                 }
 
@@ -897,6 +920,16 @@ namespace PexInterface
                 node = node.Next;
             }
             return -1;
+        }
+
+        private static void TrackExtraOperand(string val, StringFlowRecord record)
+        {
+            if (string.IsNullOrEmpty(val)) return;
+
+            if (val.StartsWith("\""))
+            {
+                record.ExtraLiterals.Add(val);
+            }
         }
 
         private static bool NodeListContains(AsmLink start, string target)

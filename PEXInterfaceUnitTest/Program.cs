@@ -38,14 +38,7 @@ namespace PEXInterfaceUnitTest
             if (false)
             {
                 //Multi Mode
-                new Thread(() =>
-                {
-                    PexHeuristicAnalysis Analysis1st = new PexHeuristicAnalysis();
-                    Analysis1st.Core.LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex").GetPsc(out string Psc, false, CodeGenStyle.CSharp)
-                    .ReadStrings().GetStrings(out List<PexStringItem> Strings).GetReaderPointer(out IntPtr Ptr1st);
-
-                    Console.WriteLine($"Ptr1st = 0x{Ptr1st.ToInt64():X}");
-                }).Start();
+              
 
                 new Thread(() =>
                 {
@@ -86,8 +79,14 @@ namespace PEXInterfaceUnitTest
                .ReadStrings().GetStrings(out List<PexStringItem> StringsC);
             }
 
-            //LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex");
-            var GetAnalysis = LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\din_Config.pex");
+            PexHeuristicAnalysis Analysis1st = new PexHeuristicAnalysis();
+            Analysis1st.Core.LoadPex("C:\\Users\\52508\\Desktop\\Script\\1.pex").GetPsc(out string Psc, false, CodeGenStyle.CSharp)
+            .ReadStrings().AnalysisStrings().GetStrings(out List<PexStringItem> Strings).GetReaderPointer(out IntPtr Ptr1st);
+
+            Console.WriteLine($"Ptr1st = 0x{Ptr1st.ToInt64():X}");
+
+       
+
             Console.ReadKey();
            
         }

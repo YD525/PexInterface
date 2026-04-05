@@ -211,12 +211,65 @@ namespace PexInterface
         }
 
         private static void Pass5_DeclareResidualTemps(
-            DecompileTracker TrackerRef,
-            PscCls ParentCls,
-            FunctionBlock Func)
+      DecompileTracker TrackerRef,
+      PscCls ParentCls,
+      FunctionBlock Func)
         {
             var TempLhsRx = new Regex(@"^(\s*)(\w+)\s*=");
             var DeclaredInOutput = new HashSet<string>(StringComparer.Ordinal);
+
+            var NeedHoist = new HashSet<string>(StringComparer.Ordinal);
+
+            var DefDepth = new Dictionary<string, int>(StringComparer.Ordinal);
+            var UseDepth = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            foreach (var AsmLine in TrackerRef.Lines)
+            {
+                if (string.IsNullOrEmpty(AsmLine.PSCCode)) continue;
+
+                string[] Parts = AsmLine.PSCCode.Split('\n');
+                foreach (var Part in Parts)
+                {
+                    if (string.IsNullOrWhiteSpace(Part)) continue;
+
+                    int Spaces = 0;
+                    foreach (char C in Part)
+                    {
+                        if (C == ' ') Spaces++;
+                        else break;
+                    }
+                    int CurrentDepth = Spaces / 4;
+
+                    var M = TempLhsRx.Match(Part);
+                    if (M.Success)
+                    {
+                        string VarName = M.Groups[2].Value;
+                        if (!DefDepth.ContainsKey(VarName))
+                            DefDepth[VarName] = CurrentDepth;
+                    }
+
+                    var Matches = Regex.Matches(Part, @"\b(temp\d+)\b");
+                    foreach (System.Text.RegularExpressions.Match Mu in Matches)
+                    {
+                        string VarName = Mu.Value;
+                        var Lhs = TempLhsRx.Match(Part);
+                        if (Lhs.Success && Lhs.Groups[2].Value == VarName)
+                        {
+                            int EqIdx = Part.IndexOf('=');
+                            if (Mu.Index <= EqIdx) continue;
+                        }
+
+                        if (!UseDepth.ContainsKey(VarName) || UseDepth[VarName] > CurrentDepth)
+                            UseDepth[VarName] = CurrentDepth;
+                    }
+                }
+            }
+
+            foreach (var Kv in DefDepth)
+            {
+                if (UseDepth.TryGetValue(Kv.Key, out int UsedAt) && UsedAt < Kv.Value)
+                    NeedHoist.Add(Kv.Key);
+            }
 
             foreach (var AsmLine in TrackerRef.Lines)
             {
@@ -231,15 +284,19 @@ namespace PexInterface
                     if (!M.Success) continue;
 
                     string VarName = M.Groups[2].Value;
-
                     if (DeclaredInOutput.Contains(VarName)) continue;
-                    if (TrackerRef.Variables.IsCreated(VarName)) continue;
 
-                    // Skip global variables (bare name or decorated form ::Name_var)
+                    if (NeedHoist.Contains(VarName))
+                    {
+                        DeclaredInOutput.Add(VarName);
+                        Parts[p] = Regex.Replace(Parts[p], @"^(\s*)var\s+", "$1");
+                        Changed = true;
+                        continue;
+                    }
+
+                    if (TrackerRef.Variables.IsCreated(VarName)) continue;
                     if (ParentCls.QueryGlobalVariable(VarName) != null) continue;
                     if (ParentCls.QueryGlobalVariable("::" + VarName + "_var") != null) continue;
-
-                    // Skip auto-property variables (bare name or decorated form ::Name_var)
                     if (ParentCls.QueryAutoGlobalVariable(VarName) != null) continue;
                     if (ParentCls.QueryAutoGlobalVariable("::" + VarName + "_var") != null) continue;
 
@@ -255,6 +312,29 @@ namespace PexInterface
 
                 if (Changed)
                     AsmLine.PSCCode = string.Join("\n", Parts);
+            }
+
+            if (NeedHoist.Count > 0)
+            {
+                AsmCode FirstLine = null;
+                foreach (var AsmLine in TrackerRef.Lines)
+                {
+                    if (!string.IsNullOrEmpty(AsmLine.PSCCode))
+                    {
+                        FirstLine = AsmLine;
+                        break;
+                    }
+                }
+
+                if (FirstLine != null)
+                {
+                    var HoistSb = new StringBuilder();
+                    foreach (var VarName in NeedHoist)
+                        HoistSb.AppendLine("var " + VarName + ";");
+
+                    FirstLine.PSCCode = HoistSb.ToString().TrimEnd('\r', '\n')
+                                        + "\n" + FirstLine.PSCCode;
+                }
             }
         }
 
@@ -335,10 +415,10 @@ namespace PexInterface
         // we must not discard the producing assignment.
         // ─────────────────────────────────────────────────────────────────────
         private static bool IsTempNeverRead(
-            DecompileTracker TrackerRef,
-            int FromLine,
-            string TempName,
-            int Length)
+      DecompileTracker TrackerRef,
+      int FromLine,
+      string TempName,
+      int Length)
         {
             if (string.IsNullOrEmpty(TempName) || !TempName.StartsWith("temp"))
                 return false;
@@ -353,27 +433,30 @@ namespace PexInterface
                 if (Head == null) continue;
 
                 // ── 1. Check reads FIRST ──────────────────────────────────────
-                if (ScanOP == "callmethod" || ScanOP == "callstatic")
+                if (ScanOP == "jmpf" || ScanOP == "jmpt")
                 {
-                    // Index 2 is the return slot (write). All others are reads.
+                    if (Head.GetValue() == TempName)
+                        return false;
+                }
+                else if (ScanOP == "callmethod" || ScanOP == "callstatic")
+                {
                     var Node = Head;
                     int ArgIdx = 0;
                     while (Node != null)
                     {
                         if (ArgIdx != 2 && Node.GetValue() == TempName)
-                            return false; // Read as caller or parameter
+                            return false;
                         Node = Node.Next;
                         ArgIdx++;
                     }
                 }
                 else
                 {
-                    // For all other ops, index 0 is destination (write); rest are reads.
                     var Node = Head.Next;
                     while (Node != null)
                     {
                         if (Node.GetValue() == TempName)
-                            return false; // Read here
+                            return false;
                         Node = Node.Next;
                     }
                 }
@@ -381,19 +464,21 @@ namespace PexInterface
                 // ── 2. Check overwrites AFTER reads ──────────────────────────
                 bool IsDestOp = ScanOP == "assign" || ScanOP == "not" || ScanOP == "cast" ||
                                 ScanOP == "strcat" || ScanOP == "iadd" || ScanOP == "isub" ||
-                                ScanOP == "array_getelement" || ScanOP == "array_length";
+                                ScanOP == "array_getelement" || ScanOP == "array_length" ||
+                                ScanOP == "cmp_eq" || ScanOP == "cmp_lt" || ScanOP == "cmp_le" ||
+                                ScanOP == "cmp_gt" || ScanOP == "cmp_ge";
                 if (IsDestOp && Head.GetValue() == TempName)
-                    return true; // Overwritten before any further read
+                    return true;
 
                 if ((ScanOP == "callmethod" || ScanOP == "callstatic") &&
                     Head.Next?.Next?.GetValue() == TempName)
-                    return true; // Return slot overwrites TempName
+                    return true;
 
                 if (ScanOP == "propget" && Head.Next?.Next?.GetValue() == TempName)
-                    return true; // propget destination overwrites TempName
+                    return true;
             }
 
-            return true; // Reached end of function without any read
+            return true;
         }
 
         private static void EmitCallStatic(AsmCode AsmLine, AsmLink Head,
@@ -779,9 +864,7 @@ namespace PexInterface
             return Count;
         }
 
-        public static ControlFlowAnalyzer Analyze(
-            List<AsmCode> Lines,
-            Func<int, string> BuildCondition)
+        public static ControlFlowAnalyzer Analyze(List<AsmCode> Lines,Func<int, string> BuildCondition,DecompileTracker Tracker,List<PexString> TempStrings)
         {
             var CFA = new ControlFlowAnalyzer();
             int Length = Lines.Count;
@@ -802,7 +885,7 @@ namespace PexInterface
 
                 if (OPCode == "jmpf" || OPCode == "jmpt")
                 {
-                    i = AnalyzeBareJump(CFA, Lines, Length, Handled, i, OPCode);
+                    i = AnalyzeBareJump(CFA, Lines, Length, Handled, i, OPCode,Tracker,TempStrings);
                     continue;
                 }
 
@@ -883,10 +966,15 @@ namespace PexInterface
             int Length,
             bool[] Handled,
             int JMPLine,
-            string OPCode)
+            string OPCode,
+            DecompileTracker Tracker,
+            List<PexString> TempStrings)
         {
             string CondVar = Lines[JMPLine].Links?.GetHead()?.GetValue() ?? "?";
-            string Condition = (OPCode == "jmpt") ? ("!" + CondVar) : CondVar;
+
+            string ResolvedCond = ControlFlowCodeGen.ResolveTemp(Tracker, JMPLine, CondVar, TempStrings);
+            string Condition = (OPCode == "jmpt") ? ("!" + ResolvedCond) : ResolvedCond;
+
             int FalseTarget = AbsTarget(Lines, JMPLine);
 
             // While detection
@@ -1055,11 +1143,13 @@ namespace PexInterface
             return string.Format("{0} {1} {2}", Left, CmpOp(OPCode), Right);
         }
 
+
+
         public static string ResolveTemp(
-            DecompileTracker Tracker,
-            int FromLine,
-            string Name,
-            List<PexString> TempStrings)
+        DecompileTracker Tracker,
+        int FromLine,
+        string Name,
+        List<PexString> TempStrings)
         {
             if (!Name.StartsWith("temp")) return Name;
 
@@ -1067,111 +1157,124 @@ namespace PexInterface
             {
                 var Line = Tracker.Lines[j];
                 string LineOP = Line.OPCode?.Value ?? "";
+                var LineHead = Line.Links?.GetHead();
+                if (LineHead == null) continue;
 
-                switch (LineOP)
+                if (LineOP == "callmethod")
                 {
-                    case "callmethod":
-                        {
-                            var LineHead = Line.Links.GetHead();
-                            var CallerNode = LineHead?.Next;
-                            var RetNode = CallerNode?.Next;
-                            if (RetNode == null || RetNode.GetValue() != Name) continue;
+                    var CallerNode = LineHead.Next;
+                    var RetNode = CallerNode?.Next;
+                    if (RetNode == null || RetNode.GetValue() != Name) continue;
 
-                            Line.PSCCode = "";
+                    Line.PSCCode = "";
 
-                            string FuncName = LineHead.GetValue();
-                            string CallerRaw = CallerNode?.GetValue() ?? "Self";
-                            string Caller = (CallerNode != null && CallerNode.IsSelf())
-                                                   ? "Self"
-                                                   : ResolveTemp(Tracker, j, CallerRaw, TempStrings);
-                            if (Caller.EndsWith("_var"))
-                                Caller = Caller.Substring(0, Caller.Length - "_var".Length);
+                    string FuncName = LineHead.GetValue();
+                    string CallerRaw = CallerNode?.GetValue() ?? "Self";
+                    string Caller = (CallerNode != null && CallerNode.IsSelf())
+                                           ? "Self"
+                                           : ResolveTemp(Tracker, j, CallerRaw, TempStrings);
+                    if (Caller.EndsWith("_var"))
+                        Caller = Caller.Substring(0, Caller.Length - "_var".Length);
 
-                            var ParamList = BuildResolvedParams(Tracker, j, RetNode.Next?.Next, TempStrings);
-                            return string.Format("{0}.{1}({2})", Caller, FuncName, string.Join(", ", ParamList));
-                        }
+                    var ParamList = BuildResolvedParams(Tracker, j, RetNode.Next?.Next, TempStrings);
+                    return string.Format("{0}.{1}({2})", Caller, FuncName, string.Join(", ", ParamList));
+                }
 
-                    case "callstatic":
-                        {
-                            var LineHead = Line.Links.GetHead();
-                            var FuncNode = LineHead?.Next;
-                            var RetNode = FuncNode?.Next;
-                            if (RetNode == null || RetNode.GetValue() != Name) continue;
+                if (LineOP == "callstatic")
+                {
+                    var FuncNode = LineHead.Next;
+                    var RetNode = FuncNode?.Next;
+                    if (RetNode == null || RetNode.GetValue() != Name) continue;
 
-                            Line.PSCCode = "";
+                    Line.PSCCode = "";
 
-                            string ClassName = PapyrusAsmDecoder.CapitalizeFirst(LineHead.GetValue());
-                            string FuncName = FuncNode?.GetValue() ?? "?";
+                    string ClassName = PapyrusAsmDecoder.CapitalizeFirst(LineHead.GetValue());
+                    string FuncName = FuncNode?.GetValue() ?? "?";
 
-                            var ParamList = BuildResolvedParams(Tracker, j, RetNode.Next?.Next, TempStrings);
-                            return string.Format("{0}.{1}({2})", ClassName, FuncName, string.Join(", ", ParamList));
-                        }
+                    var ParamList = BuildResolvedParams(Tracker, j, RetNode.Next?.Next, TempStrings);
+                    return string.Format("{0}.{1}({2})", ClassName, FuncName, string.Join(", ", ParamList));
+                }
 
-                    case "strcat":
-                        {
-                            var LineHead = Line.Links.GetHead();
-                            if (LineHead.GetValue() != Name) continue;
-                            Line.PSCCode = "";
+                if (LineOP == "strcat")
+                {
+                    if (LineHead.GetValue() != Name) continue;
+                    Line.PSCCode = "";
 
-                            string Left = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
-                            string Right = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
-                            return string.Format("{0} + {1}", Left, Right);
-                        }
+                    string Left = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                    string Right = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
+                    return string.Format("{0} + {1}", Left, Right);
+                }
 
-                    case "cast":
-                        {
-                            var LineHead = Line.Links.GetHead();
-                            if (LineHead.GetValue() != Name) continue;
-                            Line.PSCCode = "";
-                            return ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
-                        }
+                if (LineOP == "cast")
+                {
+                    if (LineHead.GetValue() != Name) continue;
+                    Line.PSCCode = "";
+                    return ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                }
 
-                    case "propget":
-                        {
-                            var LineHead = Line.Links.GetHead();
-                            var ObjNode = LineHead.Next;
-                            var DestNode = ObjNode?.Next;
-                            if (DestNode == null || DestNode.GetValue() != Name) continue;
-                            Line.PSCCode = "";
+                if (LineOP == "propget")
+                {
+                    var ObjNode = LineHead.Next;
+                    var DestNode = ObjNode?.Next;
+                    if (DestNode == null || DestNode.GetValue() != Name) continue;
+                    Line.PSCCode = "";
 
-                            string PropName = LineHead.GetValue();
-                            string Obj = (ObjNode?.GetValue() ?? "Self").ToLower() == "self"
-                                                  ? "Self" : ObjNode?.GetValue() ?? "Self";
-                            return string.Format("{0}.{1}", Obj, PropName);
-                        }
+                    string PropName = LineHead.GetValue();
+                    string Obj = (ObjNode?.GetValue() ?? "Self").ToLower() == "self"
+                                          ? "Self" : ObjNode?.GetValue() ?? "Self";
+                    return string.Format("{0}.{1}", Obj, PropName);
+                }
 
-                    case "array_getelement":
-                        {
-                            var LineHead = Line.Links.GetHead();
-                            if (LineHead.GetValue() != Name) continue;
-                            Line.PSCCode = "";
+                if (LineOP == "array_getelement")
+                {
+                    if (LineHead.GetValue() != Name) continue;
+                    Line.PSCCode = "";
 
-                            string Array = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
-                            string Index = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
-                            return string.Format("{0}[{1}]", Array, Index);
-                        }
+                    string Array = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                    string Index = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
+                    return string.Format("{0}[{1}]", Array, Index);
+                }
 
-                    case "assign":
-                        {
-                            var LineHead = Line.Links.GetHead();
-                            if (LineHead.GetValue() != Name) continue;
-                            Line.PSCCode = "";
-                            return ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
-                        }
+                if (LineOP == "assign")
+                {
+                    if (LineHead.GetValue() != Name) continue;
+                    Line.PSCCode = "";
+                    return ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                }
 
-                    case "not":
-                        {
-                            var LineHead = Line.Links.GetHead();
-                            if (LineHead.GetValue() != Name) continue;
-                            Line.PSCCode = "";
-                            string Operand = LineHead.Next?.GetValue() ?? "?";
-                            return string.Format("!{0}", Operand);
-                        }
+                if (LineOP == "not")
+                {
+                    if (LineHead.GetValue() != Name) continue;
+                    Line.PSCCode = "";
+                    string Operand = LineHead.Next?.GetValue() ?? "?";
+                    return string.Format("!{0}", Operand);
+                }
+
+                if (LineOP == "cmp_eq" || LineOP == "cmp_lt" || LineOP == "cmp_le" ||
+                    LineOP == "cmp_gt" || LineOP == "cmp_ge")
+                {
+                    if (LineHead.GetValue() != Name) continue;
+                    Line.PSCCode = "";
+
+                    string Left = ResolveTemp(Tracker, j, LineHead.Next?.GetValue() ?? "?", TempStrings);
+                    string Right = ResolveTemp(Tracker, j, LineHead.Next?.Next?.GetValue() ?? "?", TempStrings);
+                    string Op;
+                    switch (LineOP)
+                    {
+                        case "cmp_eq": Op = "=="; break;
+                        case "cmp_lt": Op = "<"; break;
+                        case "cmp_le": Op = "<="; break;
+                        case "cmp_gt": Op = ">"; break;
+                        case "cmp_ge": Op = ">="; break;
+                        default: Op = "?"; break;
+                    }
+                    return string.Format("{0} {1} {2}", Left, Op, Right);
                 }
             }
 
             return Name;
         }
+
 
         private static List<string> BuildResolvedParams(
             DecompileTracker Tracker,
@@ -1210,7 +1313,7 @@ namespace PexInterface
 
             var CFA = ControlFlowAnalyzer.Analyze(
                             Lines,
-                            LineIndex => BuildCondition(Tracker, LineIndex, TempStrings));
+                            LineIndex => BuildCondition(Tracker, LineIndex, TempStrings), Tracker, TempStrings);
 
             int Depth = 0;
             bool NextLineIsSingleIfBody = false;

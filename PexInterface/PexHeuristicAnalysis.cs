@@ -79,7 +79,7 @@ namespace PexInterface
     }
     public class PexHeuristicAnalysis
     {
-        public static string Version = "1.0.3 Beta";
+        public static string Version = "1.0.5 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
 
@@ -165,6 +165,11 @@ namespace PexInterface
             FuncNameCheck.Add(new FunctionCheck("Trace", 0, true, ApiType.NativeApi, 1, ""));
             FuncNameCheck.Add(new FunctionCheck("Trace", 0, true, ApiType.NativeApi, 2, ""));
             FuncNameCheck.Add(new FunctionCheck("Notification", 0, true, ApiType.NativeApi, 1, ""));
+
+            FuncNameCheck.Add(new FunctionCheck("NotifyActor", 0, true, ApiType.NativeApi, 3, "DD"));
+            FuncNameCheck.Add(new FunctionCheck("Warn", 0, true, ApiType.NativeApi, 1, "DD"));
+            FuncNameCheck.Add(new FunctionCheck("Log", 0, true, ApiType.NativeApi, 2, "DD"));
+            
 
             //Danger
             FuncNameCheck.Add(new FunctionCheck("DamageActorValue", 0, false, ApiType.NativeApi, -1, "Game Api", ""));
