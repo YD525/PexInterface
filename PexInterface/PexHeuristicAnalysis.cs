@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Text.RegularExpressions;
 using static PexInterface.PexHeuristicAnalysis;
@@ -80,7 +79,7 @@ namespace PexInterface
     }
     public class PexHeuristicAnalysis
     {
-        public static string Version = "1.0.5 Beta";
+        public static string Version = "1.0.6 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
 
@@ -458,7 +457,7 @@ namespace PexInterface
                         {
                             if (!IDs.Contains(GetString.Index))
                             {
-                                this.Strings[Function.FunctionName].Add(new PexStringItem(Function, GetString));
+                                this.Strings[Function.FunctionName].Add(new PexStringItem(false,Function, GetString));
                                 IDs.Add(GetString.Index);
                             }
                             else
@@ -486,11 +485,11 @@ namespace PexInterface
                 {
                     PexString NPexString = new PexString()
                     {
-                        Index = (ushort)GlobalVar.Offset,
-                        Value = GlobalVar.Value
+                        Index = GlobalVar.Offset,
+                        Value = GlobalVar.Value.Trim('\"')
                     };
 
-                    this.Strings["GlobalVariables"].Add(new PexStringItem(null,new PexStringExtend(null, NPexString, null)));
+                    this.Strings["GlobalVariables"].Add(new PexStringItem(true,new FunctionBlock(),new PexStringExtend(new AsmCode(0), NPexString, new AsmLink()),GlobalVar.ID));
                 }
             }
         }
@@ -582,16 +581,26 @@ namespace PexInterface
                     }
                 }
                 else
-                { 
+                {
+                    //In the future, it will also be necessary to trace the final line of code that was called using global variables.
                     var VarStrs = this.Strings[GetKey];
                     for (int i = 0; i < VarStrs.Count; i++)
                     {
                         var CurrentVar = VarStrs[i];
                         try 
                         { 
-                            var VarInFo = TempStrings[CurrentVar.StringTableID];
+                            var VarInFo = TempStrings[CurrentVar.VarOffset];
 
-                            
+                            if (VarInFo.Value.ToLower().EndsWith("text"))
+                            {
+                                VarStrs[i].Score = 1;
+                            }
+                            else
+                            {
+                                VarStrs[i].Score = -1;
+                            }
+
+                            VarStrs[i].UniqueKey = PexStringItem.GenUniqueKey(VarInFo.Value, VarStrs[i].Score, VarStrs[i].FunctionRef, VarStrs[i].PexStringItemRef);
                         }
                         catch { }
                     }
@@ -616,8 +625,22 @@ namespace PexInterface
                     {
                         if (LocalStrings[i].Translated.Length > 0)
                         {
-                            Core.Reader.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
-                            ModifyCount++;
+                            if (LocalStrings[i].IsVar)
+                            {
+                                if (LocalStrings[i].Original.Equals(Core.Reader.StringTable[LocalStrings[i].StringTableID].Value))
+                                {
+                                    if (LocalStrings[i].Original != LocalStrings[i].Translated)
+                                    {
+                                        Core.Reader.ModifyStringTable(LocalStrings[i].StringTableID, LocalStrings[i].Translated);
+                                        ModifyCount++;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                Core.Reader.ModifyStringTable((ushort)LocalStrings[i].StringTableID, LocalStrings[i].Translated);
+                                ModifyCount++;
+                            }            
                         }
                     }
                 }
@@ -628,7 +651,10 @@ namespace PexInterface
 
                 return 0;
             }
-            catch { return -1; }
+            catch(Exception Ex)
+            {
+                return -1; 
+            }
         }
 
         public void Close()
@@ -667,7 +693,8 @@ namespace PexInterface
             public int Score = 0;
             public string Original = "";
             public string Translated = "";
-
+            public bool IsVar = false;
+            public int VarOffset = 0;
             public bool IsCanTranslate()
             {
                 if (this.Score > 0)
@@ -707,14 +734,16 @@ namespace PexInterface
                 return SetKey;
             }
 
-            public PexStringItem(FunctionBlock FunctionRef, PexStringExtend Item)
+            public PexStringItem(bool IsVar, FunctionBlock FunctionRef, PexStringExtend Item, int VarOffset = 0)
             {
+                this.IsVar = IsVar;
                 this.FunctionRef = FunctionRef;
                 this.PexStringItemRef = Item;
 
                 this.StringTableID = Item.Index;
                 this.Original = string.Copy(Item.Value);
                 this.Translated = string.Empty;
+                this.VarOffset = VarOffset;
             }
         }
 

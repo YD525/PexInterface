@@ -428,19 +428,23 @@ namespace PexInterface
                     out ushort name, out ushort typeName,
                     out uint userFlags, out byte dataType, IntPtr.Zero) > 0)
                 {
+                    ushort RealID = 0;
+                    var GetValue = GetVariableDataValue(dataType, objectIndex, j,ref RealID);
+
                     obj.Variables.Add(new PexVariable
                     {
                         NameIndex = name,
                         TypeNameIndex = typeName,
                         UserFlags = userFlags,
                         DataType = dataType,
-                        DataValue = GetVariableDataValue(dataType, objectIndex, j)
+                        VarIndex = RealID,
+                        DataValue = GetValue
                     });
                 }
             }
         }
 
-        private object GetVariableDataValue(byte dataType, ushort objectIndex, ushort varIndex)
+        private object GetVariableDataValue(byte dataType, ushort objectIndex, ushort varIndex,ref ushort RealValueID)
         {
             try
             {
@@ -456,7 +460,10 @@ namespace PexInterface
                             {
                                 if (PexInterop.C_GetVariableInfo(_Handle, objectIndex, varIndex,
                                     out _, out _, out _, out _, ptr) > 0)
-                                    return GetString((ushort)Marshal.ReadInt16(ptr));
+                                {
+                                    RealValueID = (ushort)Marshal.ReadInt16(ptr);
+                                    return GetString(RealValueID);
+                                } 
                             }
                             finally { Marshal.FreeHGlobal(ptr); }
                             return "";
@@ -712,7 +719,7 @@ namespace PexInterface
         public class PexHeader { public uint Magic; public byte MajorVersion, MinorVersion; public ushort GameId; public ulong CompilationTime; public string SourceFileName = "", Username = "", MachineName = ""; }
         public class PexDebugFunction { public ushort ObjectNameIndex, StateNameIndex, FunctionNameIndex, InstructionCount; public byte FunctionType; public ushort[] LineNumbers = Array.Empty<ushort>(); public string GetObjectName(PexReader r) => r?.GetString(ObjectNameIndex) ?? ""; public string GetStateName(PexReader r) => r?.GetString(StateNameIndex) ?? ""; public string GetFunctionName(PexReader r) => r?.GetString(FunctionNameIndex) ?? ""; }
         public class PexDebugInfo { public bool HasDebugInfo; public ulong ModificationTime; public ushort FunctionCount; public List<PexDebugFunction> Functions = new List<PexDebugFunction>(); }
-        public class PexVariable { public ushort NameIndex, TypeNameIndex; public uint UserFlags; public byte DataType; public object DataValue = ""; public string GetName(PexReader r) => r?.GetString(NameIndex) ?? ""; public string GetTypeName(PexReader r) => r?.GetString(TypeNameIndex) ?? ""; }
+        public class PexVariable { public ushort VarIndex = 0; public ushort NameIndex, TypeNameIndex; public uint UserFlags; public byte DataType; public object DataValue = ""; public string GetName(PexReader r) => r?.GetString(NameIndex) ?? ""; public string GetTypeName(PexReader r) => r?.GetString(TypeNameIndex) ?? ""; }
         public class PexProperty { public ushort NameIndex, TypeIndex, DocstringIndex, AutoVarNameIndex; public uint UserFlags; public byte Flags; public string GetName(PexReader r) => r?.GetString(NameIndex) ?? ""; public string GetType(PexReader r) => r?.GetString(TypeIndex) ?? ""; public string GetDocstring(PexReader r) => r?.GetString(DocstringIndex) ?? ""; public string GetAutoVarName(PexReader r) => r?.GetString(AutoVarNameIndex) ?? ""; }
         public class PexState { public ushort NameIndex, NumFunctions; public List<PexFunction> Functions = new List<PexFunction>(); public string GetName(PexReader r) => r?.GetString(NameIndex) ?? ""; }
         public class PexFunctionParam { public ushort NameIndex, TypeIndex; public string GetName(PexReader r) => r?.GetString(NameIndex) ?? ""; public string GetTypeName(PexReader r) => r?.GetString(TypeIndex) ?? ""; }
