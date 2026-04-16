@@ -181,7 +181,7 @@ public class PapyrusAsmDecoder
                         NGlobalVariable.Name = Item.Value;
                         NGlobalVariable.ID = Item.Index;
 
-                        NGlobalVariable.Offset = Variable.VarIndex;
+                        NGlobalVariable.ValueOffset = Variable.VarIndex;
                         NGlobalVariable.Value = "";
 
                         GlobalVariables.Add(NGlobalVariable);
@@ -194,7 +194,7 @@ public class PapyrusAsmDecoder
                         NGlobalVariable.Name = Item.Value;
                         NGlobalVariable.ID = Item.Index;
 
-                        NGlobalVariable.Offset = Variable.VarIndex;
+                        NGlobalVariable.ValueOffset = Variable.VarIndex;
 
                         if (GetVariableType.ToLower().Equals("string"))
                         {
@@ -442,7 +442,7 @@ public class GlobalVariable
     public string Value = "";
 
     public ushort ID = 0;
-    public ushort Offset = 0;
+    public ushort ValueOffset = 0;
 }
 
 public class AutoGlobalVariable

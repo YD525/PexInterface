@@ -79,7 +79,7 @@ namespace PexInterface
     }
     public class PexHeuristicAnalysis
     {
-        public static string Version = "1.0.6 Beta";
+        public static string Version = "1.0.7 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
 
@@ -485,7 +485,7 @@ namespace PexInterface
                 {
                     PexString NPexString = new PexString()
                     {
-                        Index = GlobalVar.Offset,
+                        Index = GlobalVar.ValueOffset,
                         Value = GlobalVar.Value.Trim('\"')
                     };
 
