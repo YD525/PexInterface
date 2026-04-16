@@ -80,7 +80,7 @@ namespace PEXInterfaceUnitTest
             }
 
             PexHeuristicAnalysis Analysis1st = new PexHeuristicAnalysis();
-            Analysis1st.Core.LoadPex("C:\\Users\\52508\\Desktop\\Script\\1.pex").GetPsc(out string Psc, false, CodeGenStyle.CSharp)
+            Analysis1st.Core.LoadPex("C:\\Users\\52508\\Desktop\\TestPex\\_wetquestscript.pex").GetPsc(out string Psc, false, CodeGenStyle.CSharp)
             .ReadStrings().AnalysisStrings().GetStrings(out List<PexStringItem> Strings).GetReaderPointer(out IntPtr Ptr1st);
 
             Console.WriteLine($"Ptr1st = 0x{Ptr1st.ToInt64():X}");

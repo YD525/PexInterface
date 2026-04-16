@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Text.RegularExpressions;
 using static PexInterface.PexHeuristicAnalysis;
@@ -471,6 +472,27 @@ namespace PexInterface
                 if(!this.Types.Contains(Function.FunctionName))
                 this.Types.Add(Function.FunctionName);
             }
+
+
+            if (!this.Strings.ContainsKey("GlobalVariables"))
+            {
+                this.Strings.Add("GlobalVariables", new List<PexStringItem>());
+            }
+
+
+            foreach (var GlobalVar in this.CurrentCls.GlobalVariables)
+            {
+                if (GlobalVar.Value.StartsWith("\""))
+                {
+                    PexString NPexString = new PexString()
+                    {
+                        Index = (ushort)GlobalVar.Offset,
+                        Value = GlobalVar.Value
+                    };
+
+                    this.Strings["GlobalVariables"].Add(new PexStringItem(null,new PexStringExtend(null, NPexString, null)));
+                }
+            }
         }
 
         public List<PexStringItem> GetStrings(string Type = "")
@@ -499,58 +521,80 @@ namespace PexInterface
 
         public void AnalysisStrings()
         {
+            List<PexString> TempStrings = new List<PexString>();
+
+            TempStrings.AddRange(this.AsmDecoder.Reader.StringTable);
+
             foreach (var GetKey in this.Strings.Keys)
             {
-                var FuncStrs = this.Strings[GetKey];
-                Dictionary<string,int> FuncNames = new Dictionary<string, int>();
-                for (int i = 0; i < FuncStrs.Count; i++)
+                if (GetKey != "GlobalVariables")
                 {
-                    var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
-
-                    var FuncIndex = 0;
-                    var IFIndex = 0;
-
-                    FuncStrs[i].Score = -1;
-
-                    if (SetFlow.ConsumedByMethodName?.Length > 0)
+                    var FuncStrs = this.Strings[GetKey];
+                    Dictionary<string, int> FuncNames = new Dictionary<string, int>();
+                    for (int i = 0; i < FuncStrs.Count; i++)
                     {
-                        string SetKey = SetFlow.ConsumedByCallerName + "_" + SetFlow.ConsumedByMethodName;
-                        if (FuncNames.ContainsKey(SetKey))
+                        var SetFlow = FuncStrs[i].FunctionRef.StringFlower[FuncStrs[i].StringTableID];
+
+                        var FuncIndex = 0;
+                        var IFIndex = 0;
+
+                        FuncStrs[i].Score = -1;
+
+                        if (SetFlow.ConsumedByMethodName?.Length > 0)
                         {
-                            FuncNames[SetKey]++;
-                            FuncIndex = FuncNames[SetKey];
+                            string SetKey = SetFlow.ConsumedByCallerName + "_" + SetFlow.ConsumedByMethodName;
+                            if (FuncNames.ContainsKey(SetKey))
+                            {
+                                FuncNames[SetKey]++;
+                                FuncIndex = FuncNames[SetKey];
+                            }
+                            else
+                            {
+                                FuncNames.Add(SetKey, 0);
+                            }
+                        }
+
+                        IFIndex = SetFlow.RelatedConditions.Count + SetFlow.LocalVariablesInvolved.Count + SetFlow.GlobalVariablesInvolved.Count;
+
+                        if (FuncStrs[i].Original.StartsWith("$"))
+                        {
+                            FuncStrs[i].Score = -100;
+                        }
+                        else
+                        if (DangerFunctions.Contains(SetFlow.ConsumedByMethodName?.ToLower()))
+                        {
+                            FuncStrs[i].Score = -100;
+                        }
+                        else
+                        if (SetFlow.ConsumedByMethodName?.Length > 0)
+                        {
+                            FuncStrs[i].Score += FuncNameCheck.CheckFuncByName(SetFlow.CallInfo.MethodName, SetFlow.CallInfo.StringArgIndex, SetFlow.CallInfo.TotalArgCount);
                         }
                         else
                         {
-                            FuncNames.Add(SetKey, 0);
+                            if (SetFlow.RelatedConditions.Count > 0)
+                            {
+                                FuncStrs[i].Score -= 20;
+                            }
                         }
-                    }
 
-                    IFIndex = SetFlow.RelatedConditions.Count + SetFlow.LocalVariablesInvolved.Count + SetFlow.GlobalVariablesInvolved.Count;
+                        FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(FuncIndex + "_" + IFIndex + SetFlow.ArrayTarget, FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
+                    }
+                }
+                else
+                { 
+                    var VarStrs = this.Strings[GetKey];
+                    for (int i = 0; i < VarStrs.Count; i++)
+                    {
+                        var CurrentVar = VarStrs[i];
+                        try 
+                        { 
+                            var VarInFo = TempStrings[CurrentVar.StringTableID];
 
-                    if (FuncStrs[i].Original.StartsWith("$"))
-                    {
-                        FuncStrs[i].Score = -100;
-                    }
-                    else
-                    if (DangerFunctions.Contains(SetFlow.ConsumedByMethodName?.ToLower()))
-                    {
-                        FuncStrs[i].Score = -100;
-                    }
-                    else
-                    if (SetFlow.ConsumedByMethodName?.Length > 0)
-                    {
-                        FuncStrs[i].Score += FuncNameCheck.CheckFuncByName(SetFlow.CallInfo.MethodName, SetFlow.CallInfo.StringArgIndex, SetFlow.CallInfo.TotalArgCount);
-                    }
-                    else
-                    {
-                        if (SetFlow.RelatedConditions.Count > 0)
-                        {
-                            FuncStrs[i].Score -= 20;
+                            
                         }
+                        catch { }
                     }
-
-                    FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(FuncIndex+"_"+ IFIndex + SetFlow.ArrayTarget, FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
                 }
             }
         }
