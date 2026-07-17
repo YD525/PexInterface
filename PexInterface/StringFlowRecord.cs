@@ -274,13 +274,23 @@ namespace PexInterface
         // ─────────────────────────────────────────────────────────────────────
 
         public static List<StringFlowRecord> Analyze(
-            DecompileTracker tracker,
-            PscCls parentCls,
-            FunctionBlock func)
+        DecompileTracker tracker,
+        PscCls parentCls,
+        FunctionBlock func)
         {
             var results = new List<StringFlowRecord>();
             var lines = tracker.Lines;
             int n = lines.Count;
+
+            var globalLiteralMap = new Dictionary<string, (string Literal, ushort StringID)>(StringComparer.Ordinal);
+            foreach (var gv in parentCls.GlobalVariables)
+            {
+                if (!string.IsNullOrEmpty(gv.Value) && gv.Value.StartsWith("\"") && gv.Value.EndsWith("\""))
+                {
+                    string literal = gv.Value.Substring(1, gv.Value.Length - 2); // 去掉引号
+                    globalLiteralMap[gv.Name] = (literal, gv.ID);
+                }
+            }
 
             for (int i = 0; i < n; i++)
             {
@@ -288,54 +298,113 @@ namespace PexInterface
                 if (line?.Links == null) continue;
 
                 var strNodes = CollectStringNodes(line);
-                if (strNodes.Count == 0) continue;
-
-                foreach (var node in strNodes)
+                if (strNodes.Count > 0)
                 {
-                    var record = new StringFlowRecord
+                    foreach (var node in strNodes)
                     {
-                        LiteralValue = node.GetValue(),
-                        SourceLineIndex = i,
-                        StringID = node.StringID
-                    };
-
-                    // ── Case A ────────────────────────────────────────────────
-                    // Literal is a direct argument to a call on this line.
-                    if (TryRecordDirectCallConsumer(line, node.GetValue(), i, record))
-                    {
-                        // Chain stays empty; literal flows straight into the call.
-                    }
-                    else
-                    {
-                        // ── Case B ────────────────────────────────────────────
-                        // Literal is on the RHS of an assignment; trace forward.
-                        string destVar = GetDestinationVariable(line);
-                        if (!string.IsNullOrEmpty(destVar))
+                        var record = new StringFlowRecord
                         {
-                            record.AssignmentChain.Add(destVar);
+                            LiteralValue = node.GetValue(),
+                            SourceLineIndex = i,
+                            StringID = node.StringID
+                        };
 
-                            string op = line.OPCode?.Value ?? "";
-                            if (op == "strcat")
-                            {
-                                var head = line.Links?.GetHead();
-                                if (head != null)
-                                {
-                                    string left = head.Next?.GetValue();
-                                    string right = head.Next?.Next?.GetValue();
-                                    if (!string.IsNullOrEmpty(left) && IsGlobal(left, parentCls) && !record.GlobalVariablesInvolved.Contains(left))
-                                        record.GlobalVariablesInvolved.Add(left);
-                                    if (!string.IsNullOrEmpty(right) && IsGlobal(right, parentCls) && !record.GlobalVariablesInvolved.Contains(right))
-                                        record.GlobalVariablesInvolved.Add(right);
-                                }
-                            }
-
-                            ForwardTrace(tracker, i + 1, n, destVar, record, parentCls, func);
+                        if (TryRecordDirectCallConsumer(line, node.GetValue(), i, record))
+                        {
                         }
+                        else
+                        {
+                            string destVar = GetDestinationVariable(line);
+                            if (!string.IsNullOrEmpty(destVar))
+                            {
+                                record.AssignmentChain.Add(destVar);
+
+                                string op = line.OPCode?.Value ?? "";
+                                if (op == "strcat")
+                                {
+                                    var head = line.Links?.GetHead();
+                                    if (head != null)
+                                    {
+                                        string left = head.Next?.GetValue();
+                                        string right = head.Next?.Next?.GetValue();
+                                        if (!string.IsNullOrEmpty(left) && IsGlobal(left, parentCls) && !record.GlobalVariablesInvolved.Contains(left))
+                                            record.GlobalVariablesInvolved.Add(left);
+                                        if (!string.IsNullOrEmpty(right) && IsGlobal(right, parentCls) && !record.GlobalVariablesInvolved.Contains(right))
+                                            record.GlobalVariablesInvolved.Add(right);
+                                    }
+                                }
+
+                                ForwardTrace(tracker, i + 1, n, destVar, record, parentCls, func);
+                            }
+                        }
+
+                        ScanConditions(tracker, i, n, record);
+                        ClassifyChainVariables(record, parentCls, func);
+                        results.Add(record);
+                    }
+                }
+
+                string opcode = line.OPCode?.Value ?? "";
+                if (opcode == "callmethod" || opcode == "callstatic")
+                {
+                    var head = line.Links.GetHead();
+                    if (head == null) continue;
+
+                    AsmLink firstArgNode = null;
+                    if (opcode == "callmethod")
+                    {
+                        var callerNode = head.Next;
+                        var retNode = callerNode?.Next;
+                        firstArgNode = retNode?.Next?.Next; 
+                    }
+                    else // callstatic
+                    {
+                        var funcNode = head.Next;
+                        var retNode = funcNode?.Next;
+                        firstArgNode = retNode?.Next?.Next;
                     }
 
-                    ScanConditions(tracker, i, n, record);
-                    ClassifyChainVariables(record, parentCls, func);
-                    results.Add(record);
+                    string funcName = Cap(head.GetValue());
+                    string callerName = (opcode == "callmethod") ? NormaliseCaller(head.Next) : Cap(head.GetValue());
+                    var args = CollectArgsCap(firstArgNode);
+
+                    var node = firstArgNode;
+                    int argIdx = 0;
+                    while (node != null)
+                    {
+                        if (!node.IsNull())
+                        {
+                            string argVal = node.GetValue();
+                            if (globalLiteralMap.TryGetValue(argVal, out var entry))
+                            {
+                                var record = new StringFlowRecord
+                                {
+                                    LiteralValue = entry.Literal,
+                                    SourceLineIndex = i,
+                                    StringID = entry.StringID
+                                };
+                                record.AssignmentChain.Add(argVal); 
+
+                                record.CallInfo = new FunctionCallInfo
+                                {
+                                    CallExpression = string.Format("{0}.{1}({2})", callerName, funcName, string.Join(", ", args)),
+                                    CallerName = callerName,
+                                    MethodName = funcName,
+                                    Kind = (opcode == "callmethod") ? CallKind.Method : CallKind.Static,
+                                    TotalArgCount = args.Count,
+                                    StringArgIndex = argIdx,
+                                    Arguments = args,
+                                    LineIndex = i
+                                };
+
+                                ScanConditions(tracker, i, n, record);
+                                ClassifyChainVariables(record, parentCls, func);
+                                results.Add(record);
+                            }
+                        }
+                        node = node.Next;
+                        argIdx++;
+                    }
                 }
             }
 
