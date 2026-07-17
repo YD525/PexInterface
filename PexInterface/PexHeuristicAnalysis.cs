@@ -79,7 +79,7 @@ namespace PexInterface
     }
     public class PexHeuristicAnalysis
     {
-        public static string Version = "1.0.7 Beta";
+        public static string Version = "1.0.8 Beta";
 
         //https://ck.uesp.net/wiki/Category:Papyrus Game Api Doc
 

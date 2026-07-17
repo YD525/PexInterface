@@ -287,7 +287,7 @@ namespace PexInterface
             {
                 if (!string.IsNullOrEmpty(gv.Value) && gv.Value.StartsWith("\"") && gv.Value.EndsWith("\""))
                 {
-                    string literal = gv.Value.Substring(1, gv.Value.Length - 2); // 去掉引号
+                    string literal = gv.Value.Substring(1, gv.Value.Length - 2); // Remove the quotation marks.
                     globalLiteralMap[gv.Name] = (literal, gv.ID);
                 }
             }
