@@ -313,6 +313,22 @@ namespace PexInterface
                         if (!string.IsNullOrEmpty(destVar))
                         {
                             record.AssignmentChain.Add(destVar);
+
+                            string op = line.OPCode?.Value ?? "";
+                            if (op == "strcat")
+                            {
+                                var head = line.Links?.GetHead();
+                                if (head != null)
+                                {
+                                    string left = head.Next?.GetValue();
+                                    string right = head.Next?.Next?.GetValue();
+                                    if (!string.IsNullOrEmpty(left) && IsGlobal(left, parentCls) && !record.GlobalVariablesInvolved.Contains(left))
+                                        record.GlobalVariablesInvolved.Add(left);
+                                    if (!string.IsNullOrEmpty(right) && IsGlobal(right, parentCls) && !record.GlobalVariablesInvolved.Contains(right))
+                                        record.GlobalVariablesInvolved.Add(right);
+                                }
+                            }
+
                             ForwardTrace(tracker, i + 1, n, destVar, record, parentCls, func);
                         }
                     }
@@ -461,7 +477,6 @@ namespace PexInterface
                         record.AssignmentChain.Add(newDest);
                         currentVar = newDest;
 
-                        // ⭐ 新增逻辑：把另一个 operand 也纳入“同源”
                         if (left != currentVar) TrackExtraOperand(left, record);
                         if (right != currentVar) TrackExtraOperand(right, record);
                     }

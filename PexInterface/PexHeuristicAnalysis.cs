@@ -518,11 +518,25 @@ namespace PexInterface
             return Result;
         }
 
+        private Dictionary<string, List<StringFlowRecord>> BuildGlobalVariableUsageMap()
+        {
+            var Map = new Dictionary<string, List<StringFlowRecord>>();
+            foreach (var Func in this.CurrentCls.Functions)
+                foreach (var Flow in Func.StringFlower.Values)
+                    foreach (var GlobalName in Flow.GlobalVariablesInvolved)
+                    {
+                        if (!Map.ContainsKey(GlobalName)) Map.Add(GlobalName, new List<StringFlowRecord>());
+                        Map[GlobalName].Add(Flow);
+                    }
+            return Map;
+        }
         public void AnalysisStrings()
         {
             List<PexString> TempStrings = new List<PexString>();
 
             TempStrings.AddRange(this.AsmDecoder.Reader.StringTable);
+
+            var GlobalUsageMap = BuildGlobalVariableUsageMap();
 
             foreach (var GetKey in this.Strings.Keys)
             {
@@ -569,12 +583,10 @@ namespace PexInterface
                         {
                             FuncStrs[i].Score += FuncNameCheck.CheckFuncByName(SetFlow.CallInfo.MethodName, SetFlow.CallInfo.StringArgIndex, SetFlow.CallInfo.TotalArgCount);
                         }
-                        else
+
+                        if (SetFlow.RelatedConditions.Count > 0)
                         {
-                            if (SetFlow.RelatedConditions.Count > 0)
-                            {
-                                FuncStrs[i].Score -= 20;
-                            }
+                            FuncStrs[i].Score -= 20;
                         }
 
                         FuncStrs[i].UniqueKey = PexStringItem.GenUniqueKey(FuncIndex + "_" + IFIndex + SetFlow.ArrayTarget, FuncStrs[i].Score, FuncStrs[i].FunctionRef, FuncStrs[i].PexStringItemRef);
@@ -587,17 +599,41 @@ namespace PexInterface
                     for (int i = 0; i < VarStrs.Count; i++)
                     {
                         var CurrentVar = VarStrs[i];
-                        try 
-                        { 
+                        try
+                        {
                             var VarInFo = TempStrings[CurrentVar.VarOffset];
 
-                            if (VarInFo.Value.ToLower().EndsWith("text"))
+                            VarStrs[i].Score = VarInFo.Value.ToLower().EndsWith("text") ? 1 : -1;
+
+                            var GlobalDecl = this.CurrentCls.GlobalVariables
+                                .FirstOrDefault(G => G.ID == CurrentVar.VarOffset);
+
+                            if (GlobalDecl != null && GlobalUsageMap.TryGetValue(GlobalDecl.Name, out var Usages))
                             {
-                                VarStrs[i].Score = 1;
-                            }
-                            else
-                            {
-                                VarStrs[i].Score = -1;
+                                foreach (var Usage in Usages)
+                                {
+                                    // Method(s) the global is ultimately consumed by
+                                    if (Usage.ConsumedByMethodName?.Length > 0)
+                                    {
+                                        if (DangerFunctions.Contains(Usage.ConsumedByMethodName.ToLower()))
+                                        {
+                                            VarStrs[i].Score = -100;
+                                        }
+                                        else
+                                        {
+                                            VarStrs[i].Score += FuncNameCheck.CheckFuncByName(
+                                                Usage.CallInfo.MethodName,
+                                                Usage.CallInfo.StringArgIndex,
+                                                Usage.CallInfo.TotalArgCount);
+                                        }
+                                    }
+
+                                    // If / While conditions that test the global directly
+                                    if (Usage.RelatedConditions.Count > 0)
+                                    {
+                                        VarStrs[i].Score -= 20;
+                                    }
+                                }
                             }
 
                             VarStrs[i].UniqueKey = PexStringItem.GenUniqueKey(VarInFo.Value, VarStrs[i].Score, VarStrs[i].FunctionRef, VarStrs[i].PexStringItemRef);
