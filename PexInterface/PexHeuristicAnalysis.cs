@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using static PexInterface.PexHeuristicAnalysis;
@@ -621,6 +623,11 @@ namespace PexInterface
                                         }
                                         else
                                         {
+                                            //ParamAtIndex is currently inaccurate, and I know that. It should represent the position of the string argument.
+                                            //In most cases, the value is 0.However, when a method has multiple parameters, for example:
+                                            //XX("Str", GlobalVar)
+                                            //it will still pass 0, which is incorrect.It should pass 1 in this case.                   
+                                            //So I cannot simply split the parameters and take the index directly, because GlobalVar may actually be a temporary variable(Temp) in some cases. The logic behind resolving this is quite complicated, so I will leave it like this for now.
                                             VarStrs[i].Score += FuncNameCheck.CheckFuncByName(
                                                 Usage.CallInfo.MethodName,
                                                 Usage.CallInfo.StringArgIndex,
