@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace PexInterface
 {
@@ -347,25 +345,23 @@ namespace PexInterface
                 string opcode = line.OPCode?.Value ?? "";
                 if (opcode == "callmethod" || opcode == "callstatic")
                 {
-                    var head = line.Links.GetHead();
-                    if (head == null) continue;
+                    var Head = line.Links.GetHead();
+                    if (Head == null) continue;
 
                     AsmLink firstArgNode = null;
                     if (opcode == "callmethod")
                     {
-                        var callerNode = head.Next;
+                        var callerNode = Head.Next;
                         var retNode = callerNode?.Next;
-                        firstArgNode = retNode?.Next?.Next; 
+                        firstArgNode = retNode?.Next?.Next;
                     }
                     else // callstatic
                     {
-                        var funcNode = head.Next;
+                        var funcNode = Head.Next;
                         var retNode = funcNode?.Next;
                         firstArgNode = retNode?.Next?.Next;
                     }
 
-                    string funcName = Cap(head.GetValue());
-                    string callerName = (opcode == "callmethod") ? NormaliseCaller(head.Next) : Cap(head.GetValue());
                     var args = CollectArgsCap(firstArgNode);
 
                     var node = firstArgNode;
@@ -383,13 +379,39 @@ namespace PexInterface
                                     SourceLineIndex = i,
                                     StringID = entry.StringID
                                 };
-                                record.AssignmentChain.Add(argVal); 
+                                record.AssignmentChain.Add(argVal);
+
+                                string CallerName = "";
+                                string FuncName = "";
+
+                                CallerName = Cap(Head.GetValue());
+
+                                if (Head.Next != null)
+                                {
+                                    FuncName = Cap(Head.Next.GetValue());
+                                }
+                                else
+                                {
+                                    FuncName = CallerName;
+                                    CallerName = string.Empty;
+                                }
+
+                                string Call = "";
+
+                                if (CallerName != string.Empty)
+                                {
+                                    Call = string.Format("{0}.{1}({2})", CallerName, FuncName, string.Join(", ", args));
+                                }
+                                else
+                                {
+                                    Call = string.Format("{0}({1})",FuncName, string.Join(", ", args));
+                                }
 
                                 record.CallInfo = new FunctionCallInfo
                                 {
-                                    CallExpression = string.Format("{0}.{1}({2})", callerName, funcName, string.Join(", ", args)),
-                                    CallerName = callerName,
-                                    MethodName = funcName,
+                                    CallExpression = Call,
+                                    CallerName = CallerName,
+                                    MethodName = FuncName,
                                     Kind = (opcode == "callmethod") ? CallKind.Method : CallKind.Static,
                                     TotalArgCount = args.Count,
                                     StringArgIndex = argIdx,
