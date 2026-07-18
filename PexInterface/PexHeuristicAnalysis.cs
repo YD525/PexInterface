@@ -771,7 +771,7 @@ namespace PexInterface
 
                 //AutoMerge += "_" + StringItem.Index;
 
-                string SetKey =Crc32Helper.ComputeCrc32(Score + "_" + Sign + "_" + Func.FunctionName + "_" + AutoMerge);
+                string SetKey = Score + "_" + Sign + "_" + Func.FunctionName + "_" + AutoMerge;
                 return SetKey;
             }
 
