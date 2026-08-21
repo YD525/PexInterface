@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 // General Information about an assembly is controlled through the following
@@ -20,6 +21,7 @@ using System.Runtime.InteropServices;
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
 [assembly: Guid("d72db144-9828-47f3-8bc9-7f8c98870644")]
+[assembly: InternalsVisibleTo("PexInterface.LifecycleTests")]
 
 // Version information for an assembly consists of the following four values:
 //
@@ -28,5 +30,6 @@ using System.Runtime.InteropServices;
 //      Build Number
 //      Revision
 //
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.0.1")]
+[assembly: AssemblyFileVersion("1.0.0.1")]
+[assembly: AssemblyInformationalVersion("1.0.0.1")]

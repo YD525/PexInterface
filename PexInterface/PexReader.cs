@@ -205,10 +205,17 @@ namespace PexInterface
         }
     }
 
+    /// <summary>
+    /// Reads, analyzes, modifies, and writes a PEX file through an owned native reader instance.
+    /// </summary>
+    /// <remarks>
+    /// This type owns one native reader handle and is not thread-safe. Call <see cref="Dispose"/> when the
+    /// reader is no longer needed. <see cref="Close"/> resets the reader to a new empty native instance.
+    /// </remarks>
     public class PexReader : IDisposable
     {
-        private IntPtr _Handle;
-        private bool _Disposed = false;
+        private PexInstanceSafeHandle _handle;
+        private bool _disposed;
 
         public string PexPath { get; private set; } = "";
         public PexHeader Header { get; private set; } = new PexHeader();
@@ -217,51 +224,85 @@ namespace PexInterface
         public List<PexUserFlag> UserFlags { get; private set; } = new List<PexUserFlag>();
         public PexDebugInfo DebugInfo { get; private set; } = new PexDebugInfo();
 
+        /// <summary>
+        /// Creates a reader that owns a new native PEX instance.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the native library cannot allocate a reader instance.
+        /// </exception>
         public PexReader()
         {
-            _Handle = PexInterop.C_CreateInstance();
-            if (_Handle == IntPtr.Zero)
-                throw new Exception("Failed to create PexData instance.");
+            _handle = PexInstanceSafeHandle.Create();
         }
 
+        /// <summary>
+        /// Returns the borrowed native handle for compatibility with existing integrations.
+        /// </summary>
+        /// <returns>The native reader pointer owned by this instance.</returns>
+        /// <remarks>
+        /// The pointer remains valid only until <see cref="Close"/> or <see cref="Dispose"/> is called. The
+        /// caller must not free, cache, or use it concurrently with other operations on this reader.
+        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Thrown after this reader has been disposed.</exception>
         public IntPtr GetHandle()
-        { 
-            return _Handle;
+        {
+            return NativeHandle;
         }
+
+        /// <summary>
+        /// Releases the owned native reader instance.
+        /// </summary>
         public void Dispose()
         {
-            if (!_Disposed)
-            {
-                if (_Handle != IntPtr.Zero)
-                {
-                    PexInterop.C_DestroyInstance(_Handle);
-                    _Handle = IntPtr.Zero;
-                }
-                _Disposed = true;
-            }
+            if (_disposed)
+                return;
+
+            _handle.Dispose();
+            _disposed = true;
             GC.SuppressFinalize(this);
         }
 
-        ~PexReader() { Dispose(); }
-
         private void EnsureNotDisposed()
         {
-            if (_Disposed || _Handle == IntPtr.Zero)
+            if (_disposed || _handle == null || _handle.IsClosed || _handle.IsInvalid)
                 throw new ObjectDisposedException(nameof(PexReader));
         }
 
+        private IntPtr NativeHandle
+        {
+            get
+            {
+                EnsureNotDisposed();
+                return _handle.DangerousGetHandle();
+            }
+        }
+
+        /// <summary>
+        /// Releases the current native instance and resets this reader to a new empty instance.
+        /// </summary>
+        /// <remarks>
+        /// Existing borrowed handles become invalid. The reader remains usable until <see cref="Dispose"/> is
+        /// called.
+        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Thrown after this reader has been disposed.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// Thrown when the replacement native instance cannot be allocated.
+        /// </exception>
         public void Close()
         {
-            PexInterop.C_Close(_Handle);
-            PexInterop.C_DestroyInstance(_Handle);
-            this._Handle = PexInterop.C_CreateInstance();
+            EnsureNotDisposed();
 
-            this.PexPath = string.Empty;
-            this.Header = new PexHeader();
-            this.StringTable.Clear();
-            this.Objects.Clear();
-            this.UserFlags.Clear();
-            this.DebugInfo = new PexDebugInfo();
+            PexInstanceSafeHandle replacement = PexInstanceSafeHandle.Create();
+            PexInstanceSafeHandle previous = _handle;
+            _handle = replacement;
+            previous.Dispose();
+
+            PexPath = string.Empty;
+            Header = new PexHeader();
+            StringTable.Clear();
+            Objects.Clear();
+            UserFlags.Clear();
+            DebugInfo = new PexDebugInfo();
         }
 
         public void LoadPex(string path)
@@ -272,7 +313,7 @@ namespace PexInterface
             if (!System.IO.File.Exists(path))
                 throw new System.IO.FileNotFoundException("PEX file not found.", path);
 
-            int result = PexInterop.C_ReadPex(_Handle, path);
+            int result = PexInterop.C_ReadPex(NativeHandle, path);
             if (result <= 0)
                 throw new Exception("Failed to load PEX file: " + path);
 
@@ -287,7 +328,7 @@ namespace PexInterface
         public int SavePex(string outputPath)
         {
             EnsureNotDisposed();
-            return PexInterop.C_SavePex(_Handle, outputPath);
+            return PexInterop.C_SavePex(NativeHandle, outputPath);
         }
 
         public int ModifyStringTable(ushort index, string str)
@@ -298,7 +339,7 @@ namespace PexInterface
             try
             {
                 Marshal.Copy(bytes, 0, ptr, bytes.Length);
-                return PexInterop.C_ModifyStringTable(_Handle, index, ptr);
+                return PexInterop.C_ModifyStringTable(NativeHandle, index, ptr);
             }
             finally { Marshal.FreeHGlobal(ptr); }
         }
@@ -317,21 +358,21 @@ namespace PexInterface
         {
             Header = new PexHeader
             {
-                Magic = PexInterop.C_GetHeaderMagic(_Handle),
-                MajorVersion = PexInterop.C_GetHeaderMajorVersion(_Handle),
-                MinorVersion = PexInterop.C_GetHeaderMinorVersion(_Handle),
-                GameId = PexInterop.C_GetHeaderGameId(_Handle),
-                CompilationTime = PexInterop.C_GetHeaderCompilationTime(_Handle),
-                SourceFileName = PtrToWideStr(PexInterop.C_GetHeaderSourceFileName(_Handle)),
-                Username = PtrToWideStr(PexInterop.C_GetHeaderUsername(_Handle)),
-                MachineName = PtrToWideStr(PexInterop.C_GetHeaderMachineName(_Handle)),
+                Magic = PexInterop.C_GetHeaderMagic(NativeHandle),
+                MajorVersion = PexInterop.C_GetHeaderMajorVersion(NativeHandle),
+                MinorVersion = PexInterop.C_GetHeaderMinorVersion(NativeHandle),
+                GameId = PexInterop.C_GetHeaderGameId(NativeHandle),
+                CompilationTime = PexInterop.C_GetHeaderCompilationTime(NativeHandle),
+                SourceFileName = PtrToWideStr(PexInterop.C_GetHeaderSourceFileName(NativeHandle)),
+                Username = PtrToWideStr(PexInterop.C_GetHeaderUsername(NativeHandle)),
+                MachineName = PtrToWideStr(PexInterop.C_GetHeaderMachineName(NativeHandle)),
             };
         }
 
         private void LoadStringTable()
         {
             StringTable.Clear();
-            ushort count = PexInterop.C_GetStringTableCount(_Handle);
+            ushort count = PexInterop.C_GetStringTableCount(NativeHandle);
             for (ushort i = 0; i < count; i++)
             {
                 StringTable.Add(new PexString
@@ -344,30 +385,30 @@ namespace PexInterface
 
         private void LoadDebugInfo()
         {
-            DebugInfo.HasDebugInfo = PexInterop.C_HasDebugInfo(_Handle) != 0;
+            DebugInfo.HasDebugInfo = PexInterop.C_HasDebugInfo(NativeHandle) != 0;
             if (!DebugInfo.HasDebugInfo) return;
 
-            DebugInfo.ModificationTime = PexInterop.C_GetDebugModificationTime(_Handle);
-            DebugInfo.FunctionCount = PexInterop.C_GetDebugFunctionCount(_Handle);
+            DebugInfo.ModificationTime = PexInterop.C_GetDebugModificationTime(NativeHandle);
+            DebugInfo.FunctionCount = PexInterop.C_GetDebugFunctionCount(NativeHandle);
 
             for (ushort i = 0; i < DebugInfo.FunctionCount; i++)
             {
-                if (PexInterop.C_GetDebugFunctionInfo(_Handle, i,
+                if (PexInterop.C_GetDebugFunctionInfo(NativeHandle, i,
                     out ushort objIdx, out ushort stateIdx, out ushort funcIdx,
                     out byte funcType, out IntPtr linePtr, out int lineCount) > 0)
                 {
-                    DebugInfo.Functions.Add(new PexDebugFunction
+                    using (var lineNumbers = new PexLineNumberBufferSafeHandle(linePtr))
                     {
-                        ObjectNameIndex = objIdx,
-                        StateNameIndex = stateIdx,
-                        FunctionNameIndex = funcIdx,
-                        FunctionType = funcType,
-                        InstructionCount = (ushort)lineCount,
-                        LineNumbers = ReadUshortArray(linePtr, lineCount)
-                    });
-
-                    if (linePtr != IntPtr.Zero)
-                        PexInterop.C_FreeBuffer(linePtr);
+                        DebugInfo.Functions.Add(new PexDebugFunction
+                        {
+                            ObjectNameIndex = objIdx,
+                            StateNameIndex = stateIdx,
+                            FunctionNameIndex = funcIdx,
+                            FunctionType = funcType,
+                            InstructionCount = (ushort)lineCount,
+                            LineNumbers = ReadUshortArray(lineNumbers.DangerousGetHandle(), lineCount)
+                        });
+                    }
                 }
             }
         }
@@ -375,10 +416,10 @@ namespace PexInterface
         private void LoadUserFlags()
         {
             UserFlags.Clear();
-            ushort count = PexInterop.C_GetUserFlagCount(_Handle);
+            ushort count = PexInterop.C_GetUserFlagCount(NativeHandle);
             for (ushort i = 0; i < count; i++)
             {
-                if (PexInterop.C_GetUserFlagInfo(_Handle, i,
+                if (PexInterop.C_GetUserFlagInfo(NativeHandle, i,
                     out ushort flagNameIndex, out byte flagIndex) > 0)
                 {
                     UserFlags.Add(new PexUserFlag
@@ -393,11 +434,11 @@ namespace PexInterface
         private void LoadObjects()
         {
             Objects.Clear();
-            ushort count = PexInterop.C_GetObjectCount(_Handle);
+            ushort count = PexInterop.C_GetObjectCount(NativeHandle);
             for (ushort i = 0; i < count; i++)
             {
-                if (PexInterop.C_GetObjectInfo(_Handle, i, out ushort nameIndex, out uint size) > 0 &&
-                    PexInterop.C_GetObjectData(_Handle, i, out ushort parentClass, out ushort docStr,
+                if (PexInterop.C_GetObjectInfo(NativeHandle, i, out ushort nameIndex, out uint size) > 0 &&
+                    PexInterop.C_GetObjectData(NativeHandle, i, out ushort parentClass, out ushort docStr,
                         out uint userFlags, out ushort autoState) > 0)
                 {
                     var obj = new PexObject
@@ -421,10 +462,10 @@ namespace PexInterface
 
         private void LoadObjectVariables(PexObject obj, ushort objectIndex)
         {
-            ushort count = PexInterop.C_GetVariableCount(_Handle, objectIndex);
+            ushort count = PexInterop.C_GetVariableCount(NativeHandle, objectIndex);
             for (ushort j = 0; j < count; j++)
             {
-                if (PexInterop.C_GetVariableInfo(_Handle, objectIndex, j,
+                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, j,
                     out ushort name, out ushort typeName,
                     out uint userFlags, out byte dataType, IntPtr.Zero) > 0)
                 {
@@ -458,7 +499,7 @@ namespace PexInterface
                             IntPtr ptr = Marshal.AllocHGlobal(sizeof(ushort));
                             try
                             {
-                                if (PexInterop.C_GetVariableInfo(_Handle, objectIndex, varIndex,
+                                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, varIndex,
                                     out _, out _, out _, out _, ptr) > 0)
                                 {
                                     RealValueID = (ushort)Marshal.ReadInt16(ptr);
@@ -474,7 +515,7 @@ namespace PexInterface
                             IntPtr ptr = Marshal.AllocHGlobal(sizeof(int));
                             try
                             {
-                                if (PexInterop.C_GetVariableInfo(_Handle, objectIndex, varIndex,
+                                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, varIndex,
                                     out _, out _, out _, out _, ptr) > 0)
                                     return Marshal.ReadInt32(ptr);
                             }
@@ -487,7 +528,7 @@ namespace PexInterface
                             IntPtr ptr = Marshal.AllocHGlobal(sizeof(float));
                             try
                             {
-                                if (PexInterop.C_GetVariableInfo(_Handle, objectIndex, varIndex,
+                                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, varIndex,
                                     out _, out _, out _, out _, ptr) > 0)
                                 {
                                     byte[] b = new byte[4];
@@ -504,7 +545,7 @@ namespace PexInterface
                             IntPtr ptr = Marshal.AllocHGlobal(sizeof(byte));
                             try
                             {
-                                if (PexInterop.C_GetVariableInfo(_Handle, objectIndex, varIndex,
+                                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, varIndex,
                                     out _, out _, out _, out _, ptr) > 0)
                                     return Marshal.ReadByte(ptr) != 0;
                             }
@@ -520,10 +561,10 @@ namespace PexInterface
 
         private void LoadObjectProperties(PexObject obj, ushort objectIndex)
         {
-            ushort count = PexInterop.C_GetPropertyCount(_Handle, objectIndex);
+            ushort count = PexInterop.C_GetPropertyCount(NativeHandle, objectIndex);
             for (ushort j = 0; j < count; j++)
             {
-                if (PexInterop.C_GetPropertyInfo(_Handle, objectIndex, j,
+                if (PexInterop.C_GetPropertyInfo(NativeHandle, objectIndex, j,
                     out ushort name, out ushort type, out ushort docstring,
                     out uint userFlags, out byte flags, out ushort autoVarName) > 0)
                 {
@@ -542,10 +583,10 @@ namespace PexInterface
 
         private void LoadObjectStates(PexObject obj, ushort objectIndex)
         {
-            ushort count = PexInterop.C_GetStateCount(_Handle, objectIndex);
+            ushort count = PexInterop.C_GetStateCount(NativeHandle, objectIndex);
             for (ushort j = 0; j < count; j++)
             {
-                if (PexInterop.C_GetStateInfo(_Handle, objectIndex, j,
+                if (PexInterop.C_GetStateInfo(NativeHandle, objectIndex, j,
                     out ushort name, out ushort numFunctions) > 0)
                 {
                     var state = new PexState { NameIndex = name, NumFunctions = numFunctions };
@@ -559,7 +600,7 @@ namespace PexInterface
         {
             for (ushort k = 0; k < state.NumFunctions; k++)
             {
-                if (PexInterop.C_GetStateFunctionInfo(_Handle,
+                if (PexInterop.C_GetStateFunctionInfo(NativeHandle,
                     objectIndex, stateIndex, k,
                     out ushort funcName, out ushort returnType, out ushort docStr,
                     out uint userFlags, out byte flags,
@@ -589,10 +630,10 @@ namespace PexInterface
         private void LoadFunctionParameters(PexFunction func,
             ushort objectIndex, ushort stateIndex, ushort funcIndex)
         {
-            ushort count = PexInterop.C_GetFunctionParamCount(_Handle, objectIndex, stateIndex, funcIndex);
+            ushort count = PexInterop.C_GetFunctionParamCount(NativeHandle, objectIndex, stateIndex, funcIndex);
             for (ushort i = 0; i < count; i++)
             {
-                if (PexInterop.C_GetFunctionParamInfo(_Handle,
+                if (PexInterop.C_GetFunctionParamInfo(NativeHandle,
                     objectIndex, stateIndex, funcIndex, i,
                     out ushort name, out ushort type) > 0)
                 {
@@ -604,10 +645,10 @@ namespace PexInterface
         private void LoadFunctionLocals(PexFunction func,
             ushort objectIndex, ushort stateIndex, ushort funcIndex)
         {
-            ushort count = PexInterop.C_GetFunctionLocalCount(_Handle, objectIndex, stateIndex, funcIndex);
+            ushort count = PexInterop.C_GetFunctionLocalCount(NativeHandle, objectIndex, stateIndex, funcIndex);
             for (ushort i = 0; i < count; i++)
             {
-                if (PexInterop.C_GetFunctionLocalInfo(_Handle,
+                if (PexInterop.C_GetFunctionLocalInfo(NativeHandle,
                     objectIndex, stateIndex, funcIndex, i,
                     out ushort name, out ushort type) > 0)
                 {
@@ -621,7 +662,7 @@ namespace PexInterface
         {
             for (ushort i = 0; i < func.NumInstructions; i++)
             {
-                if (PexInterop.C_GetInstructionInfo(_Handle,
+                if (PexInterop.C_GetInstructionInfo(NativeHandle,
                     objectIndex, stateIndex, funcIndex, i,
                     out byte opcode, out ushort argCount) > 0)
                 {
@@ -632,7 +673,7 @@ namespace PexInterface
                         IntPtr argPtr = Marshal.AllocHGlobal(8);
                         try
                         {
-                            if (PexInterop.C_GetInstructionArgument(_Handle,
+                            if (PexInterop.C_GetInstructionArgument(NativeHandle,
                                 objectIndex, stateIndex, funcIndex, i, argIdx,
                                 out byte argType, argPtr) > 0)
                             {
@@ -668,10 +709,10 @@ namespace PexInterface
         {
             try
             {
-                int len = PexInterop.C_GetStringUtf8(_Handle, index, null, 0);
+                int len = PexInterop.C_GetStringUtf8(NativeHandle, index, null, 0);
                 if (len <= 0) return "";
                 byte[] buf = new byte[len + 1];
-                PexInterop.C_GetStringUtf8(_Handle, index, buf, buf.Length);
+                PexInterop.C_GetStringUtf8(NativeHandle, index, buf, buf.Length);
                 int nullIdx = Array.IndexOf(buf, (byte)0);
                 return Encoding.UTF8.GetString(buf, 0, nullIdx >= 0 ? nullIdx : len);
             }
