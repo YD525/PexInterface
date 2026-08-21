@@ -12,6 +12,7 @@
     <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <NativeDependencyPath>$(MSBuildProjectDirectory)\..\dependencies\PEX.Interop.dll</NativeDependencyPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -67,5 +68,15 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="StringFlowRecord.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="$(NativeDependencyPath)" Condition="Exists('$(NativeDependencyPath)')">
+      <Link>PEX.Interop.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <Target Name="EnsureNativeDependency" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(NativeDependencyPath)')"
+           Text="PEX.Interop.dll is missing. Run scripts\Restore-Dependencies.ps1 before building." />
+  </Target>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
