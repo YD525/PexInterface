@@ -1,8 +1,10 @@
 {
   "PexReader": {
     "repository": "YD525/PexReader",
-    "tag": "v1.0.0",
+    "tag": "v1.0.1.6",
     "asset": "PEX.Interop.dll",
-    "checksumAsset": "PEX.Interop.dll.sha256"
+    "checksumAsset": "PEX.Interop.dll.sha256",
+    "headerAsset": "PexReaderApi.h",
+    "headerChecksumAsset": "PexReaderApi.h.sha256"
   }
 }

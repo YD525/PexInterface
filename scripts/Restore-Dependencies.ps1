@@ -17,7 +17,12 @@ if ($dependency.tag -notmatch "^v[0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9.-]+)?$"
     throw "The dependency tag is invalid."
 }
 
-foreach ($fileName in @($dependency.asset, $dependency.checksumAsset)) {
+$assetPairs = @(
+    [pscustomobject]@{ Asset = $dependency.asset; Checksum = $dependency.checksumAsset }
+    [pscustomobject]@{ Asset = $dependency.headerAsset; Checksum = $dependency.headerChecksumAsset }
+)
+
+foreach ($fileName in @($assetPairs | ForEach-Object { $_.Asset; $_.Checksum })) {
     if ([System.IO.Path]::GetFileName($fileName) -ne $fileName) {
         throw "The dependency asset name is invalid: $fileName"
     }
@@ -32,28 +37,31 @@ New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 
 try {
     $releaseBaseUri = "https://github.com/$($dependency.repository)/releases/download/$($dependency.tag)"
-    $assetPath = Join-Path $temporaryDirectory $dependency.asset
-    $checksumPath = Join-Path $temporaryDirectory $dependency.checksumAsset
+    foreach ($pair in $assetPairs) {
+        $assetPath = Join-Path $temporaryDirectory $pair.Asset
+        $checksumPath = Join-Path $temporaryDirectory $pair.Checksum
 
-    Invoke-WebRequest -Uri "$releaseBaseUri/$($dependency.asset)" -OutFile $assetPath
-    Invoke-WebRequest -Uri "$releaseBaseUri/$($dependency.checksumAsset)" -OutFile $checksumPath
+        Invoke-WebRequest -Uri "$releaseBaseUri/$($pair.Asset)" -OutFile $assetPath
+        Invoke-WebRequest -Uri "$releaseBaseUri/$($pair.Checksum)" -OutFile $checksumPath
 
-    $checksumLine = (Get-Content -LiteralPath $checksumPath -Raw).Trim()
-    $checksumMatch = [System.Text.RegularExpressions.Regex]::Match(
-        $checksumLine,
-        "^(?<Hash>[A-Fa-f0-9]{64})\s+[*]?(?<FileName>.+)$")
+        $checksumLine = (Get-Content -LiteralPath $checksumPath -Raw).Trim()
+        $checksumMatch = [System.Text.RegularExpressions.Regex]::Match(
+            $checksumLine,
+            "^(?<Hash>[A-Fa-f0-9]{64})\s+[*]?(?<FileName>.+)$")
 
-    if (-not $checksumMatch.Success -or $checksumMatch.Groups["FileName"].Value -ne $dependency.asset) {
-        throw "The dependency checksum file has an invalid format."
+        if (-not $checksumMatch.Success -or $checksumMatch.Groups["FileName"].Value -ne $pair.Asset) {
+            throw "The dependency checksum file has an invalid format: $($pair.Checksum)"
+        }
+
+        $expectedHash = $checksumMatch.Groups["Hash"].Value
+        $actualHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash
+        if (-not $actualHash.Equals($expectedHash, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "The dependency checksum does not match: $($pair.Asset)"
+        }
+
+        Copy-Item -LiteralPath $assetPath -Destination (Join-Path $outputDirectory $pair.Asset) -Force
+        Copy-Item -LiteralPath $checksumPath -Destination (Join-Path $outputDirectory $pair.Checksum) -Force
     }
-
-    $expectedHash = $checksumMatch.Groups["Hash"].Value
-    $actualHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash
-    if (-not $actualHash.Equals($expectedHash, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "The dependency checksum does not match: $($dependency.asset)"
-    }
-
-    Copy-Item -LiteralPath $assetPath -Destination (Join-Path $outputDirectory $dependency.asset) -Force
 }
 finally {
     if (Test-Path -LiteralPath $temporaryDirectory) {
