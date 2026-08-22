@@ -35,11 +35,16 @@ $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $testOutput = Join-Path $repositoryRoot "PEXInterfaceUnitTest\bin\$Platform\$Configuration"
 $testAssembly = Join-Path $testOutput "PEXInterfaceUnitTest.dll"
 $testAdapter = Join-Path $testOutput "MSTest.TestAdapter.dll"
+$lifecycleTest = Join-Path $repositoryRoot `
+    "PexInterface.LifecycleTests\bin\$Platform\$Configuration\PexInterface.LifecycleTests.exe"
 if (-not (Test-Path -LiteralPath $testAssembly)) {
     throw "The PexInterface test assembly was not found: $testAssembly"
 }
 if (-not (Test-Path -LiteralPath $testAdapter)) {
     throw "The pinned MSTest adapter was not found: $testAdapter"
+}
+if (-not (Test-Path -LiteralPath $lifecycleTest)) {
+    throw "The PexInterface lifecycle test executable was not found: $lifecycleTest"
 }
 
 $arguments = @(
@@ -64,6 +69,12 @@ if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
 
 & $testRunner @arguments
 $testExitCode = $LASTEXITCODE
+
+$lifecycleExitCode = 0
+if ($testExitCode -eq 0) {
+    & $lifecycleTest
+    $lifecycleExitCode = $LASTEXITCODE
+}
 
 if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
     $trxPath = Join-Path $resolvedResultsDirectory "PEXInterfaceUnitTest.trx"
@@ -101,4 +112,7 @@ if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
 
 if ($testExitCode -ne 0) {
     throw "PexInterface tests failed with exit code $testExitCode."
+}
+if ($lifecycleExitCode -ne 0) {
+    throw "PexInterface lifecycle tests failed with exit code $lifecycleExitCode."
 }

@@ -4,11 +4,11 @@ using System.Runtime.InteropServices;
 namespace PexInterface
 {
     /// <summary>
-    /// Owns a native PEX reader instance created by <see cref="PexInterop.C_CreateInstance"/>.
+    /// Owns a native PEX reader instance created through the validated native interop boundary.
     /// </summary>
     /// <remarks>
-    /// The handle is released with <see cref="PexInterop.C_DestroyInstance"/>. Instances are not thread-safe;
-    /// callers must serialize access to the owning <see cref="PexReader"/>.
+    /// The handle is released by the same native module that created it. Instances are not thread-safe; callers
+    /// must serialize access to the owning <see cref="PexReader"/>.
     /// </remarks>
     internal sealed class PexInstanceSafeHandle : SafeHandle
     {
@@ -24,14 +24,16 @@ namespace PexInterface
         /// Creates an owned native PEX reader instance.
         /// </summary>
         /// <returns>A safe handle that owns the native instance.</returns>
-        /// <exception cref="InvalidOperationException">
-        /// Thrown when the native library cannot allocate a reader instance.
+        /// <exception cref="OutOfMemoryException">
+        /// Thrown when the native module cannot allocate an instance.
         /// </exception>
+        /// <exception cref="NotSupportedException">Thrown when the loaded native ABI is incompatible.</exception>
         internal static PexInstanceSafeHandle Create()
         {
-            IntPtr nativeHandle = PexInterop.C_CreateInstance();
+            PexNativeContract.EnsureCompatible();
+            IntPtr nativeHandle = PexNativeMethods.C_CreateInstance();
             if (nativeHandle == IntPtr.Zero)
-                throw new InvalidOperationException("Failed to create a native PEX reader instance.");
+                throw PexNativeContract.CreateException("create a PEX reader instance");
 
             var safeHandle = new PexInstanceSafeHandle();
             safeHandle.SetHandle(nativeHandle);
@@ -43,7 +45,7 @@ namespace PexInterface
         {
             try
             {
-                PexInterop.C_DestroyInstance(handle);
+                PexNativeMethods.C_DestroyInstance(handle);
                 return true;
             }
             catch (DllNotFoundException)
@@ -62,11 +64,11 @@ namespace PexInterface
     }
 
     /// <summary>
-    /// Owns a native line-number array returned by <see cref="PexInterop.C_GetDebugFunctionInfo"/>.
+    /// Owns a native line-number array returned by the debug-information ABI call.
     /// </summary>
     /// <remarks>
     /// The pointer contains <c>lineCount</c> unsigned 16-bit elements and must be released by the same
-    /// PEX native module through <see cref="PexInterop.C_FreeBuffer"/>.
+    /// PEX native module through its matching buffer-release function.
     /// </remarks>
     internal sealed class PexLineNumberBufferSafeHandle : SafeHandle
     {
@@ -88,7 +90,7 @@ namespace PexInterface
         {
             try
             {
-                PexInterop.C_FreeBuffer(handle);
+                PexNativeMethods.C_FreeBuffer(handle);
                 return true;
             }
             catch (DllNotFoundException)

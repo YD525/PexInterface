@@ -23,7 +23,7 @@ namespace PEXInterfaceUnitTest
         [TestMethod]
         public void NativeDependencyMatchesPinnedRelease()
         {
-            Assert.AreEqual("1.0.1.5", PexInterop.GetVersion());
+            Assert.AreEqual("1.0.1.6", PexInterop.GetVersion());
         }
 
         /// <summary>

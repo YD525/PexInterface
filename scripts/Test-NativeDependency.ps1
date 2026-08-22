@@ -10,25 +10,40 @@ $dependency = $manifest.PexReader
 $dependencyDirectory = Join-Path $repositoryRoot "dependencies"
 $nativePath = Join-Path $dependencyDirectory $dependency.asset
 $checksumPath = Join-Path $dependencyDirectory $dependency.checksumAsset
+$headerPath = Join-Path $dependencyDirectory $dependency.headerAsset
+$headerChecksumPath = Join-Path $dependencyDirectory $dependency.headerChecksumAsset
 
-foreach ($path in @($nativePath, $checksumPath)) {
+foreach ($path in @($nativePath, $checksumPath, $headerPath, $headerChecksumPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "The restored native dependency is incomplete: $([IO.Path]::GetFileName($path))"
     }
 }
 
-$checksumLine = (Get-Content -LiteralPath $checksumPath -Raw).Trim()
-$checksumMatch = [Text.RegularExpressions.Regex]::Match(
-    $checksumLine,
-    "^(?<Hash>[A-Fa-f0-9]{64})\s+[*]?(?<FileName>.+)$")
-if (-not $checksumMatch.Success -or $checksumMatch.Groups["FileName"].Value -ne $dependency.asset) {
-    throw "The restored dependency checksum has an invalid format."
+function Test-AssetChecksum {
+    param(
+        [string]$AssetPath,
+        [string]$ChecksumFilePath
+    )
+
+    $checksumLine = (Get-Content -LiteralPath $ChecksumFilePath -Raw).Trim()
+    $checksumMatch = [Text.RegularExpressions.Regex]::Match(
+        $checksumLine,
+        "^(?<Hash>[A-Fa-f0-9]{64})\s+[*]?(?<FileName>.+)$")
+    if (-not $checksumMatch.Success -or
+        $checksumMatch.Groups["FileName"].Value -ne [IO.Path]::GetFileName($AssetPath)) {
+        throw "The restored dependency checksum has an invalid format: $([IO.Path]::GetFileName($ChecksumFilePath))"
+    }
+
+    $actualHash = (Get-FileHash -LiteralPath $AssetPath -Algorithm SHA256).Hash
+    if (-not $actualHash.Equals(
+            $checksumMatch.Groups["Hash"].Value,
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "The restored dependency checksum does not match: $([IO.Path]::GetFileName($AssetPath))"
+    }
 }
 
-$actualHash = (Get-FileHash -LiteralPath $nativePath -Algorithm SHA256).Hash
-if (-not $actualHash.Equals($checksumMatch.Groups["Hash"].Value, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "The restored dependency checksum does not match: $($dependency.asset)"
-}
+Test-AssetChecksum -AssetPath $nativePath -ChecksumFilePath $checksumPath
+Test-AssetChecksum -AssetPath $headerPath -ChecksumFilePath $headerChecksumPath
 
 $expectedVersion = $dependency.tag.TrimStart("v")
 $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($nativePath)
@@ -81,12 +96,25 @@ foreach ($line in $exportsOutput) {
     }
 }
 
-$interopSource = Get-Content -LiteralPath (Join-Path $repositoryRoot "PexInterface\PexReader.cs")
+$headerSource = Get-Content -LiteralPath $headerPath -Raw
+$headerExports = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+$headerMatches = [Text.RegularExpressions.Regex]::Matches(
+    $headerSource,
+    "PEX_READER_API[\s\S]*?\b(?<Name>C_[A-Za-z0-9_]+)\s*\(")
+foreach ($match in $headerMatches) {
+    [void]$headerExports.Add($match.Groups["Name"].Value)
+}
+if ($headerExports.Count -eq 0) {
+    throw "No exports were discovered in the canonical native header."
+}
+
+$interopPath = Join-Path $repositoryRoot "PexInterface\PexNativeMethods.cs"
+$interopSource = Get-Content -LiteralPath $interopPath
 $imports = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($line in $interopSource) {
     $match = [Text.RegularExpressions.Regex]::Match(
         $line,
-        "\bpublic\s+static\s+extern\s+.+?\b(?<Name>C_[A-Za-z0-9_]+)\s*\(")
+        "\binternal\s+static\s+extern\s+.+?\b(?<Name>C_[A-Za-z0-9_]+)\s*\(")
     if ($match.Success) {
         [void]$imports.Add($match.Groups["Name"].Value)
     }
@@ -96,9 +124,22 @@ if ($imports.Count -eq 0) {
     throw "No managed native imports were discovered."
 }
 
-$missingExports = @($imports | Where-Object { -not $exports.Contains($_) } | Sort-Object)
-if ($missingExports.Count -ne 0) {
-    throw "The native dependency is missing managed ABI exports: $($missingExports -join ', ')"
+$missingNativeExports = @($headerExports | Where-Object { -not $exports.Contains($_) } | Sort-Object)
+$undocumentedNativeExports = @($exports | Where-Object { -not $headerExports.Contains($_) } | Sort-Object)
+$missingManagedImports = @($headerExports | Where-Object { -not $imports.Contains($_) } | Sort-Object)
+$extraManagedImports = @($imports | Where-Object { -not $headerExports.Contains($_) } | Sort-Object)
+if ($missingNativeExports.Count -ne 0 -or $undocumentedNativeExports.Count -ne 0 -or
+    $missingManagedImports.Count -ne 0 -or $extraManagedImports.Count -ne 0) {
+    throw "The DLL, canonical header, and managed import names differ. Missing native: " +
+        "$($missingNativeExports -join ', '); undocumented native: $($undocumentedNativeExports -join ', '); " +
+        "missing managed: $($missingManagedImports -join ', '); extra managed: $($extraManagedImports -join ', ')"
 }
 
-Write-Host "Verified $($dependency.tag), SHA-256, x64 architecture, and $($imports.Count) managed ABI exports."
+$dllImportFiles = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot "PexInterface") -Filter *.cs -File |
+    Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match "\[DllImport\(" })
+if ($dllImportFiles.Count -ne 1 -or $dllImportFiles[0].FullName -ne $interopPath) {
+    throw "Raw DllImport declarations must exist only in PexNativeMethods.cs."
+}
+
+Write-Host "Verified $($dependency.tag), both SHA-256 files, x64 architecture, and" `
+    "$($imports.Count) matching DLL, header, and managed ABI entries."

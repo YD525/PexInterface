@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace PexInterface
 {
@@ -9,199 +8,668 @@ namespace PexInterface
     // Licensed under the LGPL3.0 License.
 
     /// <summary>
-    /// The underlying P/Invoke binding. The first parameter of all functions is a handle (a pointer returned by C_CreateInstance).
+    /// Preserves the legacy low-level PEX API while forwarding every call to the validated internal interop boundary.
     /// </summary>
     public static class PexInterop
     {
-        private const string DllName = "Pex.Interop.dll";
-
+        /// <summary>Stores the detected native product version for compatibility with existing callers.</summary>
         public static string Version = "";
 
-        #region P/Invoke Declarations
+        #region Legacy native compatibility surface
 
+        /// <summary>Returns the borrowed native product-version pointer.</summary>
+        /// <returns>A borrowed UTF-8 pointer.</returns>
+        public static IntPtr C_GetVersion()
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetVersion();
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr C_GetVersion();
+        /// <summary>Returns the native product-version payload length.</summary>
+        /// <returns>The byte length excluding the null terminator.</returns>
+        public static int C_GetVersionLength()
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetVersionLength();
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetVersionLength();
+        /// <summary>Creates an owned native PEX reader instance.</summary>
+        /// <returns>An owned pointer-sized handle, or zero on failure.</returns>
+        public static IntPtr C_CreateInstance()
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_CreateInstance();
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr C_CreateInstance();
+        /// <summary>Destroys an owned native PEX reader instance.</summary>
+        /// <param name="handle">The nullable owned handle.</param>
+        public static void C_DestroyInstance(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            PexNativeMethods.C_DestroyInstance(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void C_DestroyInstance(IntPtr handle);
+        /// <summary>Loads a PEX file through the legacy raw-handle API.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="pexPath">The non-null UTF-16 input path.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_ReadPex(IntPtr handle, string pexPath)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_ReadPex(handle, pexPath);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-        public static extern int C_ReadPex(IntPtr handle, [MarshalAs(UnmanagedType.LPWStr)] string pexPath);
+        /// <summary>Replaces a PEX string through the legacy raw-pointer API.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="index">The string-table index.</param>
+        /// <param name="utf8Str">The non-null UTF-8 pointer.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_ModifyStringTable(IntPtr handle, ushort index, IntPtr utf8Str)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_ModifyStringTable(handle, index, utf8Str);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_ModifyStringTable(IntPtr handle, ushort index, IntPtr utf8Str);
+        /// <summary>Saves PEX data through the legacy raw-handle API.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="pexPath">The non-null UTF-16 output path.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_SavePex(IntPtr handle, string pexPath)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_SavePex(handle, pexPath);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-        public static extern int C_SavePex(IntPtr handle, [MarshalAs(UnmanagedType.LPWStr)] string pexPath);
+        /// <summary>Resets a native reader without ending its handle lifetime.</summary>
+        /// <param name="handle">The nullable borrowed handle.</param>
+        public static void C_Close(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            PexNativeMethods.C_Close(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void C_Close(IntPtr handle);
+        /// <summary>Returns the borrowed UTF-16 source-file name.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>A borrowed UTF-16 pointer.</returns>
+        public static IntPtr C_GetHeaderSourceFileName(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetHeaderSourceFileName(handle);
+        }
 
-        // ── Header ───────────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-        public static extern IntPtr C_GetHeaderSourceFileName(IntPtr handle);
+        /// <summary>Returns the borrowed UTF-16 compiler username.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>A borrowed UTF-16 pointer.</returns>
+        public static IntPtr C_GetHeaderUsername(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetHeaderUsername(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-        public static extern IntPtr C_GetHeaderUsername(IntPtr handle);
+        /// <summary>Returns the borrowed UTF-16 compiler machine name.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>A borrowed UTF-16 pointer.</returns>
+        public static IntPtr C_GetHeaderMachineName(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetHeaderMachineName(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-        public static extern IntPtr C_GetHeaderMachineName(IntPtr handle);
+        /// <summary>Returns the PEX header magic value.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 32-bit magic value.</returns>
+        public static uint C_GetHeaderMagic(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetHeaderMagic(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern uint C_GetHeaderMagic(IntPtr handle);
+        /// <summary>Returns the PEX header major version.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 8-bit major version.</returns>
+        public static byte C_GetHeaderMajorVersion(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetHeaderMajorVersion(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern byte C_GetHeaderMajorVersion(IntPtr handle);
+        /// <summary>Returns the PEX header minor version.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 8-bit minor version.</returns>
+        public static byte C_GetHeaderMinorVersion(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetHeaderMinorVersion(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern byte C_GetHeaderMinorVersion(IntPtr handle);
+        /// <summary>Returns the PEX header game identifier.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 16-bit game identifier.</returns>
+        public static ushort C_GetHeaderGameId(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetHeaderGameId(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetHeaderGameId(IntPtr handle);
+        /// <summary>Returns the PEX compilation timestamp.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 64-bit timestamp.</returns>
+        public static ulong C_GetHeaderCompilationTime(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetHeaderCompilationTime(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ulong C_GetHeaderCompilationTime(IntPtr handle);
+        /// <summary>Returns the native string-table count.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 16-bit entry count.</returns>
+        public static ushort C_GetStringTableCount(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetStringTableCount(handle);
+        }
 
-        // ── String table ─────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetStringTableCount(IntPtr handle);
+        /// <summary>Queries or copies a UTF-8 string-table entry.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="index">The string-table index.</param>
+        /// <param name="buffer">The optional caller-owned byte buffer.</param>
+        /// <param name="bufferSize">The byte capacity of <paramref name="buffer"/>.</param>
+        /// <returns>The payload length, or minus one on failure.</returns>
+        public static int C_GetStringUtf8(IntPtr handle, ushort index, byte[] buffer, int bufferSize)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetStringUtf8(handle, index, buffer, bufferSize);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetStringUtf8(IntPtr handle, ushort index, byte[] buffer, int bufferSize);
+        /// <summary>Queries or copies a UTF-16 string-table entry.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="index">The string-table index.</param>
+        /// <param name="buffer">The optional caller-owned character buffer.</param>
+        /// <param name="bufferSize">The character capacity of <paramref name="buffer"/>.</param>
+        /// <returns>The payload length, or minus one on failure.</returns>
+        public static int C_GetStringWide(IntPtr handle, ushort index, char[] buffer, int bufferSize)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetStringWide(handle, index, buffer, bufferSize);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-        public static extern int C_GetStringWide(IntPtr handle, ushort index, char[] buffer, int bufferSize);
+        /// <summary>Reports whether debug information is available.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>One when debug information exists; otherwise, zero.</returns>
+        public static byte C_HasDebugInfo(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_HasDebugInfo(handle);
+        }
 
-        // ── Debug info ───────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern byte C_HasDebugInfo(IntPtr handle);
+        /// <summary>Returns the debug modification timestamp.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 64-bit timestamp.</returns>
+        public static ulong C_GetDebugModificationTime(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetDebugModificationTime(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ulong C_GetDebugModificationTime(IntPtr handle);
+        /// <summary>Returns the debug-function count.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 16-bit function count.</returns>
+        public static ushort C_GetDebugFunctionCount(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetDebugFunctionCount(handle);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetDebugFunctionCount(IntPtr handle);
+        /// <summary>Returns debug-function metadata and an owned native line-number array.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="index">The debug-function index.</param>
+        /// <param name="objectNameIndex">Receives the object-name string index.</param>
+        /// <param name="stateNameIndex">Receives the state-name string index.</param>
+        /// <param name="functionNameIndex">Receives the function-name string index.</param>
+        /// <param name="functionType">Receives the function type.</param>
+        /// <param name="lineNumbers">Receives an owned native array pointer.</param>
+        /// <param name="lineCount">Receives the unsigned 16-bit element count.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetDebugFunctionInfo(
+            IntPtr handle,
+            ushort index,
+            out ushort objectNameIndex,
+            out ushort stateNameIndex,
+            out ushort functionNameIndex,
+            out byte functionType,
+            out IntPtr lineNumbers,
+            out int lineCount)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetDebugFunctionInfo(
+                handle,
+                index,
+                out objectNameIndex,
+                out stateNameIndex,
+                out functionNameIndex,
+                out functionType,
+                out lineNumbers,
+                out lineCount);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetDebugFunctionInfo(IntPtr handle, ushort index,
-            out ushort objectNameIndex, out ushort stateNameIndex, out ushort functionNameIndex,
-            out byte functionType, out IntPtr lineNumbers, out int lineCount);
+        /// <summary>Returns the user-flag count.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 16-bit flag count.</returns>
+        public static ushort C_GetUserFlagCount(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetUserFlagCount(handle);
+        }
 
-        // ── User flags ───────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetUserFlagCount(IntPtr handle);
+        /// <summary>Returns one user-flag entry.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="index">The user-flag index.</param>
+        /// <param name="flagNameIndex">Receives the flag-name string index.</param>
+        /// <param name="flagIndex">Receives the bit index.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetUserFlagInfo(
+            IntPtr handle,
+            ushort index,
+            out ushort flagNameIndex,
+            out byte flagIndex)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetUserFlagInfo(handle, index, out flagNameIndex, out flagIndex);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetUserFlagInfo(IntPtr handle, ushort index,
-            out ushort flagNameIndex, out byte flagIndex);
+        /// <summary>Returns the PEX object count.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <returns>The unsigned 16-bit object count.</returns>
+        public static ushort C_GetObjectCount(IntPtr handle)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetObjectCount(handle);
+        }
 
-        // ── Objects ──────────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetObjectCount(IntPtr handle);
+        /// <summary>Returns object-level metadata.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="index">The object index.</param>
+        /// <param name="nameIndex">Receives the name string index.</param>
+        /// <param name="size">Receives the encoded object size.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetObjectInfo(IntPtr handle, ushort index, out ushort nameIndex, out uint size)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetObjectInfo(handle, index, out nameIndex, out size);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetObjectInfo(IntPtr handle, ushort index,
-            out ushort nameIndex, out uint size);
+        /// <summary>Returns object-body metadata.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="parentClassName">Receives the parent-class string index.</param>
+        /// <param name="docString">Receives the documentation string index.</param>
+        /// <param name="userFlags">Receives the user flags.</param>
+        /// <param name="autoStateName">Receives the auto-state string index.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetObjectData(
+            IntPtr handle,
+            ushort objectIndex,
+            out ushort parentClassName,
+            out ushort docString,
+            out uint userFlags,
+            out ushort autoStateName)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetObjectData(
+                handle,
+                objectIndex,
+                out parentClassName,
+                out docString,
+                out userFlags,
+                out autoStateName);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetObjectData(IntPtr handle, ushort objectIndex,
-            out ushort parentClassName, out ushort docString,
-            out uint userFlags, out ushort autoStateName);
+        /// <summary>Returns the variable count for an object.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <returns>The unsigned 16-bit variable count.</returns>
+        public static ushort C_GetVariableCount(IntPtr handle, ushort objectIndex)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetVariableCount(handle, objectIndex);
+        }
 
-        // ── Variables ────────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetVariableCount(IntPtr handle, ushort objectIndex);
+        /// <summary>Returns variable metadata and an optional four-byte value.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="varIndex">The variable index.</param>
+        /// <param name="name">Receives the name string index.</param>
+        /// <param name="typeName">Receives the type-name string index.</param>
+        /// <param name="userFlags">Receives the user flags.</param>
+        /// <param name="dataType">Receives the PEX value type.</param>
+        /// <param name="dataValue">Receives the optional caller-owned value pointer.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetVariableInfo(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort varIndex,
+            out ushort name,
+            out ushort typeName,
+            out uint userFlags,
+            out byte dataType,
+            IntPtr dataValue)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetVariableInfo(
+                handle,
+                objectIndex,
+                varIndex,
+                out name,
+                out typeName,
+                out userFlags,
+                out dataType,
+                dataValue);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetVariableInfo(IntPtr handle, ushort objectIndex, ushort varIndex,
-            out ushort name, out ushort typeName,
-            out uint userFlags, out byte dataType, IntPtr dataValue);
+        /// <summary>Returns the property count for an object.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <returns>The unsigned 16-bit property count.</returns>
+        public static ushort C_GetPropertyCount(IntPtr handle, ushort objectIndex)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetPropertyCount(handle, objectIndex);
+        }
 
-        // ── Properties ───────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetPropertyCount(IntPtr handle, ushort objectIndex);
+        /// <summary>Returns property metadata.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="propIndex">The property index.</param>
+        /// <param name="name">Receives the name string index.</param>
+        /// <param name="type">Receives the type string index.</param>
+        /// <param name="docstring">Receives the documentation string index.</param>
+        /// <param name="userFlags">Receives the user flags.</param>
+        /// <param name="flags">Receives the property flags.</param>
+        /// <param name="autoVarName">Receives the auto-variable string index.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetPropertyInfo(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort propIndex,
+            out ushort name,
+            out ushort type,
+            out ushort docstring,
+            out uint userFlags,
+            out byte flags,
+            out ushort autoVarName)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetPropertyInfo(
+                handle,
+                objectIndex,
+                propIndex,
+                out name,
+                out type,
+                out docstring,
+                out userFlags,
+                out flags,
+                out autoVarName);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetPropertyInfo(IntPtr handle, ushort objectIndex, ushort propIndex,
-            out ushort name, out ushort type, out ushort docstring,
-            out uint userFlags, out byte flags, out ushort autoVarName);
+        /// <summary>Returns the state count for an object.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <returns>The unsigned 16-bit state count.</returns>
+        public static ushort C_GetStateCount(IntPtr handle, ushort objectIndex)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetStateCount(handle, objectIndex);
+        }
 
-        // ── States ───────────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetStateCount(IntPtr handle, ushort objectIndex);
+        /// <summary>Returns state metadata.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="stateIndex">The state index.</param>
+        /// <param name="name">Receives the state-name string index.</param>
+        /// <param name="numFunctions">Receives the function count.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetStateInfo(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort stateIndex,
+            out ushort name,
+            out ushort numFunctions)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetStateInfo(
+                handle,
+                objectIndex,
+                stateIndex,
+                out name,
+                out numFunctions);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetStateInfo(IntPtr handle, ushort objectIndex, ushort stateIndex,
-            out ushort name, out ushort numFunctions);
+        /// <summary>Returns state-function metadata.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="stateIndex">The state index.</param>
+        /// <param name="funcIndex">The function index.</param>
+        /// <param name="functionName">Receives the function-name string index.</param>
+        /// <param name="returnType">Receives the return-type string index.</param>
+        /// <param name="docString">Receives the documentation string index.</param>
+        /// <param name="userFlags">Receives the user flags.</param>
+        /// <param name="flags">Receives the function flags.</param>
+        /// <param name="numParams">Receives the parameter count.</param>
+        /// <param name="numLocals">Receives the local-variable count.</param>
+        /// <param name="numInstructions">Receives the instruction count.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetStateFunctionInfo(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort stateIndex,
+            ushort funcIndex,
+            out ushort functionName,
+            out ushort returnType,
+            out ushort docString,
+            out uint userFlags,
+            out byte flags,
+            out ushort numParams,
+            out ushort numLocals,
+            out ushort numInstructions)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetStateFunctionInfo(
+                handle,
+                objectIndex,
+                stateIndex,
+                funcIndex,
+                out functionName,
+                out returnType,
+                out docString,
+                out userFlags,
+                out flags,
+                out numParams,
+                out numLocals,
+                out numInstructions);
+        }
 
-        // ── Functions ────────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetStateFunctionInfo(IntPtr handle,
-            ushort objectIndex, ushort stateIndex, ushort funcIndex,
-            out ushort functionName, out ushort returnType, out ushort docString,
-            out uint userFlags, out byte flags,
-            out ushort numParams, out ushort numLocals, out ushort numInstructions);
+        /// <summary>Returns a function's parameter count.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="stateIndex">The state index.</param>
+        /// <param name="funcIndex">The function index.</param>
+        /// <returns>The unsigned 16-bit parameter count.</returns>
+        public static ushort C_GetFunctionParamCount(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort stateIndex,
+            ushort funcIndex)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetFunctionParamCount(handle, objectIndex, stateIndex, funcIndex);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetFunctionParamCount(IntPtr handle,
-            ushort objectIndex, ushort stateIndex, ushort funcIndex);
+        /// <summary>Returns function-parameter metadata.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="stateIndex">The state index.</param>
+        /// <param name="funcIndex">The function index.</param>
+        /// <param name="paramIndex">The parameter index.</param>
+        /// <param name="name">Receives the name string index.</param>
+        /// <param name="type">Receives the type string index.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetFunctionParamInfo(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort stateIndex,
+            ushort funcIndex,
+            ushort paramIndex,
+            out ushort name,
+            out ushort type)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetFunctionParamInfo(
+                handle,
+                objectIndex,
+                stateIndex,
+                funcIndex,
+                paramIndex,
+                out name,
+                out type);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetFunctionParamInfo(IntPtr handle,
-            ushort objectIndex, ushort stateIndex, ushort funcIndex, ushort paramIndex,
-            out ushort name, out ushort type);
+        /// <summary>Returns a function's local-variable count.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="stateIndex">The state index.</param>
+        /// <param name="funcIndex">The function index.</param>
+        /// <returns>The unsigned 16-bit local-variable count.</returns>
+        public static ushort C_GetFunctionLocalCount(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort stateIndex,
+            ushort funcIndex)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetFunctionLocalCount(handle, objectIndex, stateIndex, funcIndex);
+        }
 
-        // ── Function locals ──────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ushort C_GetFunctionLocalCount(IntPtr handle,
-            ushort objectIndex, ushort stateIndex, ushort funcIndex);
+        /// <summary>Returns function-local metadata.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="stateIndex">The state index.</param>
+        /// <param name="funcIndex">The function index.</param>
+        /// <param name="localIndex">The local-variable index.</param>
+        /// <param name="name">Receives the name string index.</param>
+        /// <param name="type">Receives the type string index.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetFunctionLocalInfo(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort stateIndex,
+            ushort funcIndex,
+            ushort localIndex,
+            out ushort name,
+            out ushort type)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetFunctionLocalInfo(
+                handle,
+                objectIndex,
+                stateIndex,
+                funcIndex,
+                localIndex,
+                out name,
+                out type);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetFunctionLocalInfo(IntPtr handle,
-            ushort objectIndex, ushort stateIndex, ushort funcIndex, ushort localIndex,
-            out ushort name, out ushort type);
+        /// <summary>Returns instruction metadata.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="stateIndex">The state index.</param>
+        /// <param name="funcIndex">The function index.</param>
+        /// <param name="instrIndex">The instruction index.</param>
+        /// <param name="opcode">Receives the opcode.</param>
+        /// <param name="argCount">Receives the argument count.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetInstructionInfo(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort stateIndex,
+            ushort funcIndex,
+            ushort instrIndex,
+            out byte opcode,
+            out ushort argCount)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetInstructionInfo(
+                handle,
+                objectIndex,
+                stateIndex,
+                funcIndex,
+                instrIndex,
+                out opcode,
+                out argCount);
+        }
 
-        // ── Instructions ─────────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetInstructionInfo(IntPtr handle,
-            ushort objectIndex, ushort stateIndex, ushort funcIndex, ushort instrIndex,
-            out byte opcode, out ushort argCount);
+        /// <summary>Returns one instruction argument.</summary>
+        /// <param name="handle">The non-null borrowed handle.</param>
+        /// <param name="objectIndex">The object index.</param>
+        /// <param name="stateIndex">The state index.</param>
+        /// <param name="funcIndex">The function index.</param>
+        /// <param name="instrIndex">The instruction index.</param>
+        /// <param name="argIndex">The argument index.</param>
+        /// <param name="type">Receives the PEX value type.</param>
+        /// <param name="value">Receives the optional caller-owned value pointer.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        public static int C_GetInstructionArgument(
+            IntPtr handle,
+            ushort objectIndex,
+            ushort stateIndex,
+            ushort funcIndex,
+            ushort instrIndex,
+            ushort argIndex,
+            out byte type,
+            IntPtr value)
+        {
+            PexNativeContract.EnsureCompatible();
+            return PexNativeMethods.C_GetInstructionArgument(
+                handle,
+                objectIndex,
+                stateIndex,
+                funcIndex,
+                instrIndex,
+                argIndex,
+                out type,
+                value);
+        }
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int C_GetInstructionArgument(IntPtr handle,
-            ushort objectIndex, ushort stateIndex, ushort funcIndex, ushort instrIndex,
-            ushort argIndex, out byte type, IntPtr value);
-
-        // ── Memory management ────────────────────────────────
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void C_FreeBuffer(IntPtr buffer);
+        /// <summary>Releases a native line-number array with its producing allocator.</summary>
+        /// <param name="buffer">The nullable owned native pointer.</param>
+        public static void C_FreeBuffer(IntPtr buffer)
+        {
+            PexNativeContract.EnsureCompatible();
+            PexNativeMethods.C_FreeBuffer(buffer);
+        }
 
         #endregion
 
-
+        /// <summary>
+        /// Returns the validated native product version without exposing the borrowed version pointer.
+        /// </summary>
+        /// <returns>
+        /// The product version, <c>Unknown</c>, or a compatibility error prefixed with <c>Error:</c>.
+        /// </returns>
         public static string GetVersion()
         {
             try
             {
-                int length = C_GetVersionLength();
-                if (length <= 0) return "Unknown";
-                IntPtr ptr = C_GetVersion();
-                return ptr == IntPtr.Zero ? "Unknown" : Marshal.PtrToStringAnsi(ptr, length);
+                return PexNativeContract.ReadProductVersion();
             }
-            catch (Exception ex) { return "Error: " + ex.Message; }
+            catch (Exception exception)
+            {
+                return "Error: " + exception.Message;
+            }
         }
 
         static PexInterop()
         {
-            try { Version = GetVersion(); }
-            catch (Exception ex) { Version = "Error: " + ex.Message; }
+            Version = GetVersion();
         }
     }
 
@@ -227,9 +695,10 @@ namespace PexInterface
         /// <summary>
         /// Creates a reader that owns a new native PEX instance.
         /// </summary>
-        /// <exception cref="InvalidOperationException">
-        /// Thrown when the native library cannot allocate a reader instance.
+        /// <exception cref="OutOfMemoryException">
+        /// Thrown when the native module cannot allocate an instance.
         /// </exception>
+        /// <exception cref="NotSupportedException">Thrown when the loaded native ABI is incompatible.</exception>
         public PexReader()
         {
             _handle = PexInstanceSafeHandle.Create();
@@ -285,9 +754,10 @@ namespace PexInterface
         /// called.
         /// </remarks>
         /// <exception cref="ObjectDisposedException">Thrown after this reader has been disposed.</exception>
-        /// <exception cref="InvalidOperationException">
+        /// <exception cref="OutOfMemoryException">
         /// Thrown when the replacement native instance cannot be allocated.
         /// </exception>
+        /// <exception cref="NotSupportedException">Thrown when the loaded native ABI is incompatible.</exception>
         public void Close()
         {
             EnsureNotDisposed();
@@ -313,8 +783,11 @@ namespace PexInterface
         /// A missing or malformed file leaves the previously loaded native and managed model unchanged.
         /// </remarks>
         /// <exception cref="ObjectDisposedException">Thrown after this reader has been disposed.</exception>
-        /// <exception cref="System.IO.FileNotFoundException">Thrown when <paramref name="path"/> does not exist.</exception>
-        /// <exception cref="Exception">Thrown when the native parser rejects the file.</exception>
+        /// <exception cref="System.IO.FileNotFoundException">
+        /// Thrown when <paramref name="path"/> does not exist.
+        /// </exception>
+        /// <exception cref="System.IO.InvalidDataException">Thrown when the native parser rejects the file.</exception>
+        /// <exception cref="NotSupportedException">Thrown when the loaded native ABI is incompatible.</exception>
         public void LoadPex(string path)
         {
             EnsureNotDisposed();
@@ -324,7 +797,7 @@ namespace PexInterface
 
             int result = PexInterop.C_ReadPex(NativeHandle, path);
             if (result <= 0)
-                throw new Exception("Failed to load PEX file: " + path);
+                throw PexNativeContract.CreateException("load the PEX file");
 
             Clear();
             PexPath = path;
@@ -335,23 +808,33 @@ namespace PexInterface
             LoadObjects();
         }
 
+        /// <summary>Saves the loaded PEX data to a file.</summary>
+        /// <param name="outputPath">The UTF-16 output path.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        /// <exception cref="ObjectDisposedException">Thrown after this reader has been disposed.</exception>
+        /// <exception cref="NotSupportedException">Thrown when the loaded native ABI is incompatible.</exception>
         public int SavePex(string outputPath)
         {
             EnsureNotDisposed();
             return PexInterop.C_SavePex(NativeHandle, outputPath);
         }
 
+        /// <summary>Replaces one string-table entry with a managed UTF-8 value.</summary>
+        /// <param name="index">The string-table index.</param>
+        /// <param name="str">The replacement value.</param>
+        /// <returns>One on success; otherwise, zero.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="str"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// Thrown when <paramref name="str"/> contains an embedded null character.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">Thrown after this reader has been disposed.</exception>
+        /// <exception cref="NotSupportedException">Thrown when the loaded native ABI is incompatible.</exception>
         public int ModifyStringTable(ushort index, string str)
         {
             EnsureNotDisposed();
-            byte[] bytes = Encoding.UTF8.GetBytes(str + "\0");
-            IntPtr ptr = Marshal.AllocHGlobal(bytes.Length);
-            try
-            {
-                Marshal.Copy(bytes, 0, ptr, bytes.Length);
-                return PexInterop.C_ModifyStringTable(NativeHandle, index, ptr);
-            }
-            finally { Marshal.FreeHGlobal(ptr); }
+            return PexNativeContract.WithUtf8String(
+                str,
+                pointer => PexInterop.C_ModifyStringTable(NativeHandle, index, pointer));
         }
 
         public void Clear()
@@ -373,9 +856,12 @@ namespace PexInterface
                 MinorVersion = PexInterop.C_GetHeaderMinorVersion(NativeHandle),
                 GameId = PexInterop.C_GetHeaderGameId(NativeHandle),
                 CompilationTime = PexInterop.C_GetHeaderCompilationTime(NativeHandle),
-                SourceFileName = PtrToWideStr(PexInterop.C_GetHeaderSourceFileName(NativeHandle)),
-                Username = PtrToWideStr(PexInterop.C_GetHeaderUsername(NativeHandle)),
-                MachineName = PtrToWideStr(PexInterop.C_GetHeaderMachineName(NativeHandle)),
+                SourceFileName = PexNativeContract.ReadBorrowedUnicodeString(
+                    PexInterop.C_GetHeaderSourceFileName(NativeHandle)),
+                Username = PexNativeContract.ReadBorrowedUnicodeString(
+                    PexInterop.C_GetHeaderUsername(NativeHandle)),
+                MachineName = PexNativeContract.ReadBorrowedUnicodeString(
+                    PexInterop.C_GetHeaderMachineName(NativeHandle)),
             };
         }
 
@@ -409,6 +895,9 @@ namespace PexInterface
                 {
                     using (var lineNumbers = new PexLineNumberBufferSafeHandle(linePtr))
                     {
+                        if (lineCount < 0 || lineCount > ushort.MaxValue)
+                            throw new System.IO.InvalidDataException("The native line-number count is invalid.");
+
                         DebugInfo.Functions.Add(new PexDebugFunction
                         {
                             ObjectNameIndex = objIdx,
@@ -479,8 +968,8 @@ namespace PexInterface
                     out ushort name, out ushort typeName,
                     out uint userFlags, out byte dataType, IntPtr.Zero) > 0)
                 {
-                    ushort RealID = 0;
-                    var GetValue = GetVariableDataValue(dataType, objectIndex, j,ref RealID);
+                    ushort realValueId = 0;
+                    object value = GetVariableDataValue(dataType, objectIndex, j, ref realValueId);
 
                     obj.Variables.Add(new PexVariable
                     {
@@ -488,85 +977,52 @@ namespace PexInterface
                         TypeNameIndex = typeName,
                         UserFlags = userFlags,
                         DataType = dataType,
-                        VarIndex = RealID,
-                        DataValue = GetValue
+                        VarIndex = realValueId,
+                        DataValue = value
                     });
                 }
             }
         }
 
-        private object GetVariableDataValue(byte dataType, ushort objectIndex, ushort varIndex,ref ushort RealValueID)
+        private object GetVariableDataValue(
+            byte dataType,
+            ushort objectIndex,
+            ushort variableIndex,
+            ref ushort realValueId)
         {
-            try
+            if (dataType == 0)
+                return null;
+
+            PexNativeValue value;
+            int result = PexNativeContract.WithValueBuffer(
+                pointer => PexInterop.C_GetVariableInfo(
+                    NativeHandle,
+                    objectIndex,
+                    variableIndex,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    pointer),
+                out value);
+            if (result <= 0)
+                return null;
+
+            switch (dataType)
             {
-                switch (dataType)
-                {
-                    case 0: return null;
-
-                    case 1:
-                    case 2:
-                        {
-                            IntPtr ptr = Marshal.AllocHGlobal(sizeof(ushort));
-                            try
-                            {
-                                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, varIndex,
-                                    out _, out _, out _, out _, ptr) > 0)
-                                {
-                                    RealValueID = (ushort)Marshal.ReadInt16(ptr);
-                                    return GetString(RealValueID);
-                                } 
-                            }
-                            finally { Marshal.FreeHGlobal(ptr); }
-                            return "";
-                        }
-
-                    case 3:
-                        {
-                            IntPtr ptr = Marshal.AllocHGlobal(sizeof(int));
-                            try
-                            {
-                                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, varIndex,
-                                    out _, out _, out _, out _, ptr) > 0)
-                                    return Marshal.ReadInt32(ptr);
-                            }
-                            finally { Marshal.FreeHGlobal(ptr); }
-                            return 0;
-                        }
-
-                    case 4:
-                        {
-                            IntPtr ptr = Marshal.AllocHGlobal(sizeof(float));
-                            try
-                            {
-                                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, varIndex,
-                                    out _, out _, out _, out _, ptr) > 0)
-                                {
-                                    byte[] b = new byte[4];
-                                    Marshal.Copy(ptr, b, 0, 4);
-                                    return BitConverter.ToSingle(b, 0);
-                                }
-                            }
-                            finally { Marshal.FreeHGlobal(ptr); }
-                            return 0.0f;
-                        }
-
-                    case 5:
-                        {
-                            IntPtr ptr = Marshal.AllocHGlobal(sizeof(byte));
-                            try
-                            {
-                                if (PexInterop.C_GetVariableInfo(NativeHandle, objectIndex, varIndex,
-                                    out _, out _, out _, out _, ptr) > 0)
-                                    return Marshal.ReadByte(ptr) != 0;
-                            }
-                            finally { Marshal.FreeHGlobal(ptr); }
-                            return false;
-                        }
-
-                    default: return null;
-                }
+                case 1:
+                case 2:
+                    realValueId = value.StringTableIndex;
+                    return GetString(realValueId);
+                case 3:
+                    return value.Integer;
+                case 4:
+                    return value.Real;
+                case 5:
+                    return value.Boolean != 0;
+                default:
+                    return null;
             }
-            catch { return null; }
         }
 
         private void LoadObjectProperties(PexObject obj, ushort objectIndex)
@@ -680,31 +1136,46 @@ namespace PexInterface
 
                     for (ushort argIdx = 0; argIdx < argCount; argIdx++)
                     {
-                        IntPtr argPtr = Marshal.AllocHGlobal(8);
-                        try
+                        byte argumentType = 0;
+                        PexNativeValue value;
+                        int argumentResult = PexNativeContract.WithValueBuffer(
+                            pointer => PexInterop.C_GetInstructionArgument(
+                                NativeHandle,
+                                objectIndex,
+                                stateIndex,
+                                funcIndex,
+                                i,
+                                argIdx,
+                                out argumentType,
+                                pointer),
+                            out value);
+                        if (argumentResult > 0)
                         {
-                            if (PexInterop.C_GetInstructionArgument(NativeHandle,
-                                objectIndex, stateIndex, funcIndex, i, argIdx,
-                                out byte argType, argPtr) > 0)
+                            var argument = new PexInstructionArgument { Type = argumentType };
+                            switch (argumentType)
                             {
-                                var arg = new PexInstructionArgument { Type = argType };
-                                switch (argType)
-                                {
-                                    case 0: arg.Value = null; break;
-                                    case 1: case 2: arg.Value = (ushort)Marshal.ReadInt16(argPtr); break;
-                                    case 3: arg.Value = Marshal.ReadInt32(argPtr); break;
-                                    case 4:
-                                        byte[] fb = new byte[4];
-                                        Marshal.Copy(argPtr, fb, 0, 4);
-                                        arg.Value = BitConverter.ToSingle(fb, 0);
-                                        break;
-                                    case 5: arg.Value = Marshal.ReadByte(argPtr) != 0; break;
-                                    default: arg.Value = null; break;
-                                }
-                                instr.Arguments.Add(arg);
+                                case 0:
+                                    argument.Value = null;
+                                    break;
+                                case 1:
+                                case 2:
+                                    argument.Value = value.StringTableIndex;
+                                    break;
+                                case 3:
+                                    argument.Value = value.Integer;
+                                    break;
+                                case 4:
+                                    argument.Value = value.Real;
+                                    break;
+                                case 5:
+                                    argument.Value = value.Boolean != 0;
+                                    break;
+                                default:
+                                    argument.Value = null;
+                                    break;
                             }
+                            instr.Arguments.Add(argument);
                         }
-                        finally { Marshal.FreeHGlobal(argPtr); }
                     }
 
                     func.Instructions.Add(instr);
@@ -717,24 +1188,18 @@ namespace PexInterface
 
         private string GetStringUtf8(ushort index)
         {
-            try
-            {
-                int len = PexInterop.C_GetStringUtf8(NativeHandle, index, null, 0);
-                if (len <= 0) return "";
-                byte[] buf = new byte[len + 1];
-                PexInterop.C_GetStringUtf8(NativeHandle, index, buf, buf.Length);
-                int nullIdx = Array.IndexOf(buf, (byte)0);
-                return Encoding.UTF8.GetString(buf, 0, nullIdx >= 0 ? nullIdx : len);
-            }
-            catch { return ""; }
+            return PexNativeContract.ReadStringUtf8(NativeHandle, index);
         }
-
-        private static string PtrToWideStr(IntPtr ptr)
-            => ptr != IntPtr.Zero ? (Marshal.PtrToStringUni(ptr) ?? "") : "";
 
         private static ushort[] ReadUshortArray(IntPtr ptr, int count)
         {
-            if (ptr == IntPtr.Zero || count <= 0) return Array.Empty<ushort>();
+            if (count < 0 || count > ushort.MaxValue)
+                throw new System.IO.InvalidDataException("The native line-number count is invalid.");
+            if (count == 0)
+                return Array.Empty<ushort>();
+            if (ptr == IntPtr.Zero)
+                throw new System.IO.InvalidDataException("The native line-number pointer is null.");
+
             byte[] raw = new byte[count * 2];
             Marshal.Copy(ptr, raw, 0, raw.Length);
             ushort[] result = new ushort[count];
