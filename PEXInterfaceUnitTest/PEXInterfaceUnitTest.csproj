@@ -63,6 +63,7 @@
   <ItemGroup>
     <Compile Include="PexNativeContractTests.cs" />
     <Compile Include="PexInterfaceTests.cs" />
+    <Compile Include="PexModelTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

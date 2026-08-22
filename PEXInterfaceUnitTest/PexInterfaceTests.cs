@@ -99,6 +99,64 @@ namespace PEXInterfaceUnitTest
         }
 
         /// <summary>
+        /// Protects the current C# decompilation output before renderer extraction.
+        /// </summary>
+        [TestMethod]
+        public void CSharpDecompilerOutputMatchesGoldenContract()
+        {
+            string expected = string.Join("\n", new[]
+            {
+                "public class ObjectName : ObjectName ",
+                "{",
+                "    //GlobalVariables",
+                "",
+                "",
+                "",
+                "public class Grüße 東京",
+                "{",
+                "    private Int FunctionName(Int Variable)",
+                "    {",
+                "        \"Method\" = Variable.None(True);",
+                "        fadd 1.5 -2 0.5",
+                "    }",
+                "",
+                "}",
+                "",
+                ""
+            });
+
+            Assert.AreEqual(expected, DecompileFixture(CodeGenStyle.CSharp));
+        }
+
+        /// <summary>
+        /// Protects the current Papyrus decompilation output before renderer extraction.
+        /// </summary>
+        [TestMethod]
+        public void PapyrusDecompilerOutputMatchesGoldenContract()
+        {
+            string expected = string.Join("\n", new[]
+            {
+                "ScriptName ObjectName Extends ObjectName",
+                "    ;GlobalVariables",
+                "",
+                "",
+                "",
+                "State Grüße 東京",
+                "",
+                "    Int Function FunctionName(Int Variable)",
+                "        \"Method\" = Variable.None(True);",
+                "        fadd 1.5 -2 0.5",
+                "    EndFunction",
+                "",
+                "EndState",
+                "",
+                ""
+            });
+
+            Assert.AreEqual(expected, DecompileFixture(CodeGenStyle.Papyrus));
+        }
+
+        /// <summary>
         /// Verifies that a Unicode string modification survives save and reload without changing structure.
         /// </summary>
         [TestMethod]
@@ -195,6 +253,24 @@ namespace PEXInterfaceUnitTest
             string path = System.IO.Path.Combine(directory, fileName);
             File.WriteAllBytes(path, ReadFixtureBytes());
             return path;
+        }
+
+        private static string DecompileFixture(CodeGenStyle style)
+        {
+            using (var directory = new TemporaryDirectory())
+            {
+                string fixturePath = WriteFixture(directory.Path, "golden.pex");
+                var analysis = new PexHeuristicAnalysis();
+                try
+                {
+                    analysis.Core.LoadPex(fixturePath).GetPsc(out string source, false, style);
+                    return source.Replace("\r\n", "\n").Replace("\r", "\n");
+                }
+                finally
+                {
+                    analysis.Core.Reader.Dispose();
+                }
+            }
         }
 
         private static byte[] ReadFixtureBytes()

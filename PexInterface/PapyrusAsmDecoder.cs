@@ -2,6 +2,7 @@
 using System;
 using PexInterface;
 using System.Linq;
+using System.Globalization;
 using static PexInterface.PexReader;
 using System.Text.RegularExpressions;
 using static PapyrusAsmDecoder;
@@ -44,6 +45,24 @@ public class PapyrusAsmDecoder
     public static string Version = "1.0.5 Beta";
 
     public PexReader Reader = null;
+    private PexDocumentModel _model;
+    private PexReader _modelReader;
+
+    internal void SetModel(PexDocumentModel model)
+    {
+        _model = model ?? throw new ArgumentNullException(nameof(model));
+        _modelReader = Reader;
+    }
+
+    private PexDocumentModel GetModel()
+    {
+        if (_model == null || (Reader != null && !ReferenceEquals(Reader, _modelReader)))
+        {
+            _model = PexDocumentModel.Create(Reader);
+            _modelReader = Reader;
+        }
+        return _model;
+    }
 
     public enum ObjType
     {
@@ -51,7 +70,31 @@ public class PapyrusAsmDecoder
     }
     public object QueryAnyByID(int ID, ref ObjType Type)
     {
-        foreach (var GetObj in Reader.Objects)
+        object result = QueryModelByID(ID, ref Type);
+        if (Type == ObjType.Variables)
+        {
+            PexModelVariable variable = result as PexModelVariable;
+            return variable == null ? null : CreateLegacyVariable(variable);
+        }
+        if (Type == ObjType.Properties)
+        {
+            PexModelProperty property = result as PexModelProperty;
+            return property == null ? null : CreateLegacyProperty(property);
+        }
+        if (Type == ObjType.Functions)
+        {
+            List<PexModelFunction> functions = result as List<PexModelFunction>;
+            return functions?.Select(CreateLegacyFunction).ToList();
+        }
+        if (Type == ObjType.DebugInfo && result is ushort functionNameIndex)
+            return new PexDebugFunction { FunctionNameIndex = functionNameIndex };
+        return null;
+    }
+
+    private object QueryModelByID(int ID, ref ObjType Type)
+    {
+        PexDocumentModel model = GetModel();
+        foreach (var GetObj in model.Objects)
         {
             foreach (var GetItem in GetObj.Variables)
             {
@@ -71,45 +114,75 @@ public class PapyrusAsmDecoder
                 }
             }
 
-            List<PexFunction> Functions = new List<PexFunction>();
-
+            var functions = new List<PexModelFunction>();
             foreach (var GetItem in GetObj.States)
             {
                 foreach (var GetFunc in GetItem.Functions)
                 {
-                    if (GetFunc.FunctionNameIndex.Equals((ushort)ID))
+                    if (GetFunc.NameIndex.Equals((ushort)ID))
                     {
                         Type = ObjType.Functions;
-                        Functions.Add(GetFunc);
+                        functions.Add(GetFunc);
                     }
                 }
             }
 
-            if (Functions.Count > 0)
-            {
-                return Functions;
-            }
+            if (functions.Count > 0)
+                return functions;
 
-            foreach (var GetDebugFunc in Reader.DebugInfo.Functions)
+            foreach (ushort functionNameIndex in model.DebugFunctionNames)
             {
-                if (GetDebugFunc.FunctionNameIndex.Equals(ID))
+                if (functionNameIndex.Equals(ID))
                 {
                     Type = ObjType.DebugInfo;
-                    return GetDebugFunc;
+                    return functionNameIndex;
                 }
             }
         }
 
         return null;
     }
+
+    private static PexVariable CreateLegacyVariable(PexModelVariable variable)
+    {
+        return new PexVariable
+        {
+            VarIndex = variable.VariableIndex,
+            NameIndex = variable.NameIndex,
+            TypeNameIndex = variable.TypeNameIndex,
+            DataValue = variable.Value
+        };
+    }
+
+    private static PexProperty CreateLegacyProperty(PexModelProperty property)
+    {
+        return new PexProperty
+        {
+            NameIndex = property.NameIndex,
+            TypeIndex = property.TypeIndex,
+            AutoVarNameIndex = property.AutoVariableNameIndex
+        };
+    }
+
+    private static PexFunction CreateLegacyFunction(PexModelFunction function)
+    {
+        return new PexFunction
+        {
+            FunctionNameIndex = function.NameIndex,
+            ReturnTypeIndex = function.ReturnTypeIndex,
+            Flags = function.Flags
+        };
+    }
+
     public PscCls DeClass(List<PexString> TempStrings)
     {
         PscCls CreateCls = new PscCls();
 
-        if (Reader.Objects.Count > 0)
+        PexDocumentModel model = GetModel();
+        if (model.Objects.Count > 0)
         {
-            string ScriptName = TempStrings[Reader.Objects[0].NameIndex].Value;
-            string ParentClass = TempStrings[Reader.Objects[0].ParentClassNameIndex].Value;
+            string ScriptName = TempStrings[model.Objects[0].NameIndex].Value;
+            string ParentClass = TempStrings[model.Objects[0].ParentClassNameIndex].Value;
 
             CreateCls.ClassName = ScriptName;
             CreateCls.Inherit = ParentClass;
@@ -126,22 +199,22 @@ public class PapyrusAsmDecoder
             var Item = TempStrings[i];
             ObjType CheckType = ObjType.Null;
 
-            var TempValue = QueryAnyByID(Item.Index, ref CheckType);
+            var TempValue = QueryModelByID(Item.Index, ref CheckType);
 
             if (CheckType == ObjType.Properties)
             {
-                PexProperty Property = TempValue as PexProperty;
+                PexModelProperty Property = TempValue as PexModelProperty;
 
                 string GetVariableType = TempStrings[Property.TypeIndex].Value;
-                string CheckVarName = TempStrings[Property.AutoVarNameIndex].Value;
+                string CheckVarName = TempStrings[Property.AutoVariableNameIndex].Value;
 
                 if (CheckVarName.StartsWith("::"))
                 {
-                    var RealValue = QueryAnyByID(Property.AutoVarNameIndex, ref CheckType);
+                    var RealValue = QueryModelByID(Property.AutoVariableNameIndex, ref CheckType);
                     string GetRealValue = "";
                     if (CheckType == ObjType.Variables)
                     {
-                        GetRealValue = ObjToStr((RealValue as PexVariable).DataValue);
+                        GetRealValue = ObjToStr((RealValue as PexModelVariable).Value);
                     }
 
                     AutoGlobalVariable NAutoGlobalVariable = new AutoGlobalVariable();
@@ -165,15 +238,15 @@ public class PapyrusAsmDecoder
         {
             var Item = TempStrings[i];
             ObjType CheckType = ObjType.Null;
-            var TempValue = QueryAnyByID(Item.Index, ref CheckType);
+            var TempValue = QueryModelByID(Item.Index, ref CheckType);
 
             if (CheckType == ObjType.Variables)
             {
-                PexVariable Variable = TempValue as PexVariable;
+                PexModelVariable Variable = TempValue as PexModelVariable;
                 if (!Item.Value.StartsWith("::"))
                 {
                     string GetVariableType = TempStrings[Variable.TypeNameIndex].Value;
-                    string TryGetValue = ObjToStr(Variable.DataValue);
+                    string TryGetValue = ObjToStr(Variable.Value);
                     if (TryGetValue.Length == 0)
                     {
                         GlobalVariable NGlobalVariable = new GlobalVariable();
@@ -181,7 +254,7 @@ public class PapyrusAsmDecoder
                         NGlobalVariable.Name = Item.Value;
                         NGlobalVariable.ID = Item.Index;
 
-                        NGlobalVariable.ValueOffset = Variable.VarIndex;
+                        NGlobalVariable.ValueOffset = Variable.VariableIndex;
                         NGlobalVariable.Value = "";
 
                         GlobalVariables.Add(NGlobalVariable);
@@ -194,7 +267,7 @@ public class PapyrusAsmDecoder
                         NGlobalVariable.Name = Item.Value;
                         NGlobalVariable.ID = Item.Index;
 
-                        NGlobalVariable.ValueOffset = Variable.VarIndex;
+                        NGlobalVariable.ValueOffset = Variable.VariableIndex;
 
                         if (GetVariableType.ToLower().Equals("string"))
                         {
@@ -250,10 +323,11 @@ public class PapyrusAsmDecoder
         // Determine which state is the "Auto State" so we can tag it later.
         // The auto-state name is stored in the Object header.
         string autoStateName = "";
-        if (Reader.Objects.Count > 0)
-            autoStateName = tempStrings[Reader.Objects[0].AutoStateNameIndex].Value;
+        PexDocumentModel model = GetModel();
+        if (model.Objects.Count > 0)
+            autoStateName = tempStrings[model.Objects[0].AutoStateNameIndex].Value;
 
-        foreach (var obj in Reader.Objects)
+        foreach (var obj in model.Objects)
         {
             foreach (var state in obj.States)
             {
@@ -277,7 +351,7 @@ public class PapyrusAsmDecoder
     // ── Helper: build one FunctionBlock from a PexFunction ───────────────────────
 
     private FunctionBlock BuildFunctionBlock(
-        PexFunction pexFunc,
+        PexModelFunction pexFunc,
         string stateName,
         List<PexString> tempStrings,
         PscCls parentCls,
@@ -287,7 +361,7 @@ public class PapyrusAsmDecoder
         var block = new FunctionBlock();
 
         // Function identity
-        block.FunctionName = tempStrings[pexFunc.FunctionNameIndex].Value;
+        block.FunctionName = tempStrings[pexFunc.NameIndex].Value;
         block.StateName = stateName;
 
         // Flags  (bit 0 = Global, bit 1 = Native)
@@ -300,7 +374,7 @@ public class PapyrusAsmDecoder
 
         // Parameters
         var paramList = new List<LocalVariable>();
-        for (int i = 0; i < pexFunc.NumParams && i < pexFunc.Parameters.Count; i++)
+        for (int i = 0; i < pexFunc.Parameters.Count; i++)
         {
             var p = pexFunc.Parameters[i];
             paramList.Add(new LocalVariable
@@ -319,8 +393,12 @@ public class PapyrusAsmDecoder
         {
             var opCode = new AsmOPCode
             {
-                Value = instr.GetOpcodeName(),
-                Arguments = instr.Arguments
+                Value = instr.Opcode,
+                Arguments = instr.Arguments.Select(argument => new PexInstructionArgument
+                {
+                    Type = argument.Type,
+                    Value = argument.Value
+                }).ToList()
             };
 
             var orders = BuildOrders(out List<ushort> StrPos, block,instr, tempStrings);
@@ -343,7 +421,7 @@ public class PapyrusAsmDecoder
     private List<AsmOrder> BuildOrders(
         out List<ushort> StrPos,
         FunctionBlock BlockRef,
-        PexInstruction Instruct,
+        PexModelInstruction Instruct,
         List<PexString> tempStrings)
     {
         var Orders = new List<AsmOrder>();
@@ -358,11 +436,11 @@ public class PapyrusAsmDecoder
                     continue;
 
                 case 3: // integer literal
-                    Orders.Add(new AsmOrder(Arg.Value?.ToString() ?? "0"));
+                    Orders.Add(new AsmOrder(Convert.ToString(Arg.Value, CultureInfo.InvariantCulture) ?? "0"));
                     continue;
 
                 case 4: // float literal
-                    Orders.Add(new AsmOrder(Arg.Value?.ToString() ?? "0.0"));
+                    Orders.Add(new AsmOrder(Convert.ToString(Arg.Value, CultureInfo.InvariantCulture) ?? "0.0"));
                     continue;
 
                 case 5: // bool literal
@@ -385,16 +463,44 @@ public class PapyrusAsmDecoder
 
             // Attach metadata (variable / function / property info)
             ObjType infoType = ObjType.Null;
-            var infoObj = QueryAnyByID(StrEntry.Index, ref infoType);
+            var infoObj = QueryModelByID(StrEntry.Index, ref infoType);
             if (infoObj != null)
             {
                 Order.InFo = new AsmInFo();
                 if (infoType == ObjType.Variables)
-                    Order.InFo.Variable = infoObj as PexVariable;
+                {
+                    PexModelVariable variable = infoObj as PexModelVariable;
+                    Order.InFo.Variable = new PexVariable
+                    {
+                        VarIndex = variable.VariableIndex,
+                        NameIndex = variable.NameIndex,
+                        TypeNameIndex = variable.TypeNameIndex,
+                        DataValue = variable.Value
+                    };
+                }
                 else if (infoType == ObjType.Functions)
-                    Order.InFo.Function = (infoObj as List<PexFunction>)?[0];
+                {
+                    PexModelFunction function = (infoObj as List<PexModelFunction>)?[0];
+                    if (function != null)
+                    {
+                        Order.InFo.Function = new PexFunction
+                        {
+                            FunctionNameIndex = function.NameIndex,
+                            ReturnTypeIndex = function.ReturnTypeIndex,
+                            Flags = function.Flags
+                        };
+                    }
+                }
                 else if (infoType == ObjType.Properties)
-                    Order.InFo.Property = infoObj as PexProperty;
+                {
+                    PexModelProperty property = infoObj as PexModelProperty;
+                    Order.InFo.Property = new PexProperty
+                    {
+                        NameIndex = property.NameIndex,
+                        TypeIndex = property.TypeIndex,
+                        AutoVarNameIndex = property.AutoVariableNameIndex
+                    };
+                }
             }
 
             
@@ -415,7 +521,11 @@ public class PapyrusAsmDecoder
     {
         List<PexString> TempStrings = new List<PexString>();
 
-        TempStrings.AddRange(Reader.StringTable);
+        TempStrings.AddRange(GetModel().Strings.Select(item => new PexString
+        {
+            Index = item.Index,
+            Value = item.Value
+        }));
     
         var GenPsc = DeClass(TempStrings);
 
