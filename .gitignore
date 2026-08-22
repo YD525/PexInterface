@@ -1,5 +1,6 @@
 .vs/
 .test-results/
+.ci-artifacts/
 [Bb]in/
 [Oo]bj/
 dependencies/

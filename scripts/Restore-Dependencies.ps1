@@ -54,6 +54,7 @@ try {
     }
 
     Copy-Item -LiteralPath $assetPath -Destination (Join-Path $outputDirectory $dependency.asset) -Force
+    Copy-Item -LiteralPath $checksumPath -Destination (Join-Path $outputDirectory $dependency.checksumAsset) -Force
 }
 finally {
     if (Test-Path -LiteralPath $temporaryDirectory) {

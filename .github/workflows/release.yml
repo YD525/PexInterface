@@ -14,22 +14,52 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Configure MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
       - name: Restore native dependency
         shell: pwsh
         run: .\scripts\Restore-Dependencies.ps1
 
-      - name: Build x64 release
+      - name: Verify native dependency checksum and ABI
         shell: pwsh
-        run: msbuild .\PexInterface.sln /restore /m /p:Configuration=Release /p:Platform=x64
+        run: .\scripts\Test-NativeDependency.ps1
+
+      - name: Build and run Roslyn analyzers
+        shell: pwsh
+        run: .\scripts\Invoke-Build.ps1 -Configuration Release -Platform x64
+
+      - name: Verify changed API documentation
+        shell: pwsh
+        run: .\scripts\Test-ChangedApiDocumentation.ps1 -BaseRef HEAD^
 
       - name: Run managed/native integration tests
         shell: pwsh
-        run: .\scripts\Run-Tests.ps1 -Configuration Release -Platform x64
+        run: .\scripts\Run-Tests.ps1 -Configuration Release -Platform x64 -ResultsDirectory .ci-artifacts\tests
+
+      - name: Verify release version
+        shell: pwsh
+        run: |
+          $artifact = ".\PexInterface\bin\x64\Release\PexInterface.dll"
+          $expectedVersion = $env:GITHUB_REF_NAME.TrimStart("v")
+          $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($artifact)
+          if ($versionInfo.FileVersion -ne $expectedVersion -or
+              $versionInfo.ProductVersion -ne $expectedVersion) {
+              throw "Release artifact version does not match $env:GITHUB_REF_NAME."
+          }
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: managed-test-results
+          path: .ci-artifacts/tests
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Create checksum
         shell: pwsh

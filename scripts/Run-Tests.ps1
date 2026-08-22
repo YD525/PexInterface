@@ -63,6 +63,42 @@ if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
 }
 
 & $testRunner @arguments
-if ($LASTEXITCODE -ne 0) {
-    throw "PexInterface tests failed with exit code $LASTEXITCODE."
+$testExitCode = $LASTEXITCODE
+
+if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
+    $trxPath = Join-Path $resolvedResultsDirectory "PEXInterfaceUnitTest.trx"
+    if (Test-Path -LiteralPath $trxPath -PathType Leaf) {
+        $document = [Xml.XmlDocument]::new()
+        $document.PreserveWhitespace = $true
+        $document.Load($trxPath)
+        $namespaceManager = [Xml.XmlNamespaceManager]::new($document.NameTable)
+        $namespaceManager.AddNamespace("trx", "http://microsoft.com/schemas/VisualStudio/TeamTest/2010")
+
+        $testRun = $document.SelectSingleNode("/trx:TestRun", $namespaceManager)
+        $testRun.SetAttribute("name", "PexInterface test run")
+        $testRun.SetAttribute("runUser", "test-user")
+
+        $deployment = $document.SelectSingleNode("//trx:Deployment", $namespaceManager)
+        if ($null -ne $deployment) {
+            $deployment.SetAttribute("runDeploymentRoot", "test-results")
+        }
+
+        foreach ($result in $document.SelectNodes("//trx:UnitTestResult", $namespaceManager)) {
+            $result.SetAttribute("computerName", "test-host")
+        }
+
+        foreach ($definition in $document.SelectNodes("//trx:UnitTest", $namespaceManager)) {
+            $definition.SetAttribute("storage", [IO.Path]::GetFileName($definition.GetAttribute("storage")))
+        }
+
+        foreach ($method in $document.SelectNodes("//trx:TestMethod", $namespaceManager)) {
+            $method.SetAttribute("codeBase", [IO.Path]::GetFileName($method.GetAttribute("codeBase")))
+        }
+
+        $document.Save($trxPath)
+    }
+}
+
+if ($testExitCode -ne 0) {
+    throw "PexInterface tests failed with exit code $testExitCode."
 }

@@ -692,7 +692,7 @@ namespace PexInterface
 
                 return 0;
             }
-            catch(Exception Ex)
+            catch(Exception)
             {
                 return -1; 
             }
