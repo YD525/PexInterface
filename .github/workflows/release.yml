@@ -25,7 +25,11 @@ jobs:
 
       - name: Build x64 release
         shell: pwsh
-        run: msbuild .\PexInterface.sln /m /p:Configuration=Release /p:Platform=x64
+        run: msbuild .\PexInterface.sln /restore /m /p:Configuration=Release /p:Platform=x64
+
+      - name: Run managed/native integration tests
+        shell: pwsh
+        run: .\scripts\Run-Tests.ps1 -Configuration Release -Platform x64
 
       - name: Create checksum
         shell: pwsh

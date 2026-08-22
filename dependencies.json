@@ -1,7 +1,7 @@
 {
   "PexReader": {
     "repository": "Modding-Forge/PexReader",
-    "tag": "v1.0.1.2",
+    "tag": "v1.0.1.5",
     "asset": "PEX.Interop.dll",
     "checksumAsset": "PEX.Interop.dll.sha256"
   }

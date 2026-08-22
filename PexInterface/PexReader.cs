@@ -305,10 +305,19 @@ namespace PexInterface
             DebugInfo = new PexDebugInfo();
         }
 
+        /// <summary>
+        /// Loads a PEX file and replaces the current managed model after native parsing succeeds.
+        /// </summary>
+        /// <param name="path">The path of the PEX file to load.</param>
+        /// <remarks>
+        /// A missing or malformed file leaves the previously loaded native and managed model unchanged.
+        /// </remarks>
+        /// <exception cref="ObjectDisposedException">Thrown after this reader has been disposed.</exception>
+        /// <exception cref="System.IO.FileNotFoundException">Thrown when <paramref name="path"/> does not exist.</exception>
+        /// <exception cref="Exception">Thrown when the native parser rejects the file.</exception>
         public void LoadPex(string path)
         {
             EnsureNotDisposed();
-            Clear();
 
             if (!System.IO.File.Exists(path))
                 throw new System.IO.FileNotFoundException("PEX file not found.", path);
@@ -317,6 +326,7 @@ namespace PexInterface
             if (result <= 0)
                 throw new Exception("Failed to load PEX file: " + path);
 
+            Clear();
             PexPath = path;
             LoadHeader();
             LoadStringTable();
