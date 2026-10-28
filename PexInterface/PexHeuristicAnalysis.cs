@@ -428,6 +428,56 @@ namespace PexInterface
                     }
                 }
             }
+
+            DeduplicateUniqueKeys();
+        }
+
+        /// <summary>
+        /// Appends a stable "_#N" suffix to duplicate UniqueKeys.
+        /// The first occurrence keeps its original key; later ones get _#1, _#2, ...
+        /// Iteration order is function declaration order (Types) then GlobalVariables,
+        /// and each list keeps its original instruction order (not Score-sorted),
+        /// so the suffix is stable across loads of the same file.
+        /// </summary>
+        private void DeduplicateUniqueKeys()
+        {
+            HashSet<string> Used = new HashSet<string>();
+            Dictionary<string, int> Counter = new Dictionary<string, int>();
+
+            List<string> Order = new List<string>(this.Types);
+            if (this.Strings.ContainsKey("GlobalVariables"))
+            {
+                Order.Add("GlobalVariables");
+            }
+
+            foreach (var TypeName in Order)
+            {
+                if (!this.Strings.TryGetValue(TypeName, out var List)) continue;
+
+                foreach (var Item in List)
+                {
+                    string BaseKey = Item.UniqueKey ?? "";
+
+                    if (Used.Add(BaseKey))
+                    {
+                        if (!Counter.ContainsKey(BaseKey)) Counter.Add(BaseKey, 0);
+                        continue;
+                    }
+
+                    int N = Counter.ContainsKey(BaseKey) ? Counter[BaseKey] : 0;
+                    string NewKey;
+                    do
+                    {
+                        N++;
+                        NewKey = BaseKey + "_#" + N;
+                    }
+                    while (Used.Contains(NewKey));
+
+                    Counter[BaseKey] = N;
+                    Used.Add(NewKey);
+                    Item.UniqueKey = NewKey;
+                }
+            }
         }
 
         public int EvaluationScore()
