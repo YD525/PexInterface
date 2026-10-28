@@ -42,7 +42,7 @@ public class PapyrusAsmDecoder
         return Number;
     }
 
-    public static string Version = "1.0.5 Beta";
+    public static string Version = "1.0.6 Beta";
 
     public PexReader Reader = null;
     private PexDocumentModel _model;
